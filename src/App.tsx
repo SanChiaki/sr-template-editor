@@ -167,6 +167,7 @@ function App() {
     if (!range) return;
 
     const borderColor = component.style?.borderColor || DefaultColors[component.type]?.border || '#9ca3af';
+    const bgColor = DefaultColors[component.type]?.bg || 'rgba(156, 163, 175, 0.2)';
 
     let x = 0, y = 0, width = 0, height = 0;
     for (let i = 0; i < range.col; i++) x += sheet.getColumnWidth(i);
@@ -182,7 +183,7 @@ function App() {
       );
 
       const style = shape.style();
-      style.fill = { type: 0, color: 'transparent' };
+      style.fill = { type: GC.Spread.Sheets.Shapes.ShapeFillType.solid, color: bgColor };
       style.line = {
         color: borderColor,
         width: 2,
