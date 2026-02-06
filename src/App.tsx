@@ -5,13 +5,17 @@ import '@grapecity/spread-sheets-shapes';
 import '@grapecity/spread-sheets-charts';
 import '@grapecity/spread-sheets/styles/gc.spread.sheets.excel2013white.css';
 
+// Import SpreadJS Designer component
+import { SpreadDesigner } from './components/SpreadDesigner';
+
 // SpreadJS evaluation mode - will show watermark
 (GC.Spread.Sheets as any).LicenseKey = '';
+
 import { SmartComponent, DefaultColors } from './types/SmartComponent';
 import { ComponentLibrary } from './components/ComponentLibrary';
 import { ComponentList } from './components/ComponentList';
 import { PropertiesPanel } from './components/PropertiesPanel';
-import { Download, Layers, Save, Undo, Redo } from 'lucide-react';
+import { Download, Layers } from 'lucide-react';
 
 const colLetterToIndex = (letters: string): number => {
   let result = 0;
@@ -49,48 +53,25 @@ function App() {
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
   const shapesRef = useRef<Map<string, GC.Spread.Sheets.Shapes.Shape>>(new Map());
   const componentMapRef = useRef<Map<string, SmartComponent>>(new Map());
-  const hostRef = useRef<HTMLDivElement>(null);
-  const spreadRef = useRef<GC.Spread.Sheets.Workbook | null>(null);
+  const designerRef = useRef<any>(null);
   const isInternalSelectionRef = useRef(false);
-  const createdShapesRef = useRef<Set<string>>(new Set()); // 追踪已创建的 shape
-  const updatingComponentRef = useRef<Set<string>>(new Set()); // 追踪正在更新的组件
+  const createdShapesRef = useRef<Set<string>>(new Set());
+  const updatingComponentRef = useRef<Set<string>>(new Set());
 
-  useEffect(() => {
-    if (hostRef.current && !spreadRef.current) {
+  // Designer initialization callback
+  const handleWorkbookReady = useCallback((workbook: GC.Spread.Sheets.Workbook, designer: any) => {
+    designerRef.current = designer;
+    setSpread(workbook);
+
+    // Load saved components
+    const savedComponents = localStorage.getItem('smartreport_components');
+    if (savedComponents) {
       try {
-        const newSpread = new GC.Spread.Sheets.Workbook(hostRef.current, {
-          sheetCount: 1,
-          allowCopyPasteExcelStyle: true,
-          allowUserDragDrop: true,
-          allowUserDragFill: true,
-          allowUserResize: true,
-          allowUserZoom: true,
-          showHorizontalScrollbar: true,
-          showVerticalScrollbar: true,
-          tabStripVisible: true,
-        });
-        spreadRef.current = newSpread;
-        setSpread(newSpread);
-
-        // Load saved components
-        const savedComponents = localStorage.getItem('smartreport_components');
-        if (savedComponents) {
-          try {
-            setComponents(JSON.parse(savedComponents));
-          } catch (e) {
-            console.error('Load components error:', e);
-          }
-        }
+        setComponents(JSON.parse(savedComponents));
       } catch (e) {
-        console.error('Failed to initialize:', e);
+        console.error('Load components error:', e);
       }
     }
-    return () => {
-      if (spreadRef.current) {
-        try { spreadRef.current.destroy(); } catch {}
-        spreadRef.current = null;
-      }
-    };
   }, []);
 
   const parseRange = (location: string): { row: number; col: number; rowCount: number; colCount: number } | null => {
@@ -149,7 +130,6 @@ function App() {
   }, [components]);
 
   const createShape = useCallback((component: SmartComponent) => {
-    // 检查是否已创建过
     if (createdShapesRef.current.has(component.id)) {
       console.log('[createShape] Already created, skipping:', component.id);
       return;
@@ -190,10 +170,8 @@ function App() {
       shape.allowMove(true);
       shape.allowResize(true);
 
-      // 先添加到 shapesRef，这样 ShapeSelectionChanged 事件不会误删组件
       shapesRef.current.set(component.id, shape);
       componentMapRef.current.set(component.id, component);
-      // 标记为已创建
       createdShapesRef.current.add(component.id);
     } catch (e) {
       console.error('Error creating shape:', e);
@@ -207,7 +185,7 @@ function App() {
       try { sheet.shapes.remove(id); } catch {}
       shapesRef.current.delete(id);
       componentMapRef.current.delete(id);
-      createdShapesRef.current.delete(id); // 从已创建列表中移除
+      createdShapesRef.current.delete(id);
     }
   }, [spread]);
 
@@ -215,7 +193,6 @@ function App() {
     if (!spread) return { row: 0, col: 0, rowCount: 1, colCount: 1 };
     const sheet = spread.getActiveSheet();
 
-    // 找到起始列：x 所在的列
     let accX = 0, col = 0;
     while (col < 100) {
       const colWidth = sheet.getColumnWidth(col);
@@ -226,7 +203,6 @@ function App() {
       col++;
     }
 
-    // 找到起始行：y 所在的行
     let accY = 0, row = 0;
     while (row < 100) {
       const rowHeight = sheet.getRowHeight(row);
@@ -237,7 +213,6 @@ function App() {
       row++;
     }
 
-    // 计算跨越的列数
     let accW = 0, colCount = 0;
     let c = col;
     while (accW < width && c < 100) {
@@ -247,7 +222,6 @@ function App() {
     }
     if (colCount === 0) colCount = 1;
 
-    // 计算跨越的行数
     let accH = 0, rowCount = 0;
     let r = row;
     while (accH < height && r < 100) {
@@ -262,10 +236,10 @@ function App() {
 
   const selectedIdRef = useRef<string | null>(null);
 
-  // 同步 selectedId 到 ref
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
+
   useEffect(() => {
     if (!spread) return;
     const sheet = spread.getActiveSheet();
@@ -297,11 +271,9 @@ function App() {
     };
 
     const handleShapeRemoved = () => {
-      // 检测是否有 shape 被删除
       const allShapes = sheet.shapes.all();
       const currentShapeIds = new Set(allShapes.map((s: GC.Spread.Sheets.Shapes.Shape) => s.name()));
 
-      // 找出已被删除的 shape（跳过正在更新的组件）
       shapesRef.current.forEach((_, id) => {
         if (!currentShapeIds.has(id) && !updatingComponentRef.current.has(id)) {
           setComponents(prev => prev.filter(c => c.id !== id));
@@ -314,49 +286,39 @@ function App() {
 
     const handleShapeSelectionChanged = (_: unknown, args: { shape?: GC.Spread.Sheets.Shapes.Shape }) => {
       console.log('[ShapeSelectionChanged] args:', args);
-      // 如果是内部触发的选中，忽略事件以防止循环
       if (isInternalSelectionRef.current) {
         console.log('[ShapeSelectionChanged] Ignored due to internal selection');
         return;
       }
 
-      // 检测是否有 shape 被删除
       const allShapes = sheet.shapes.all();
       const currentShapeIds = new Set(allShapes.map((s: GC.Spread.Sheets.Shapes.Shape) => s.name()));
 
-      // 找出需要删除的 id（只删除 shapesRef 中有但当前没有的）
       const deletedIds: string[] = [];
       shapesRef.current.forEach((_, id) => {
-        // 跳过正在更新的组件
         if (!currentShapeIds.has(id) && !updatingComponentRef.current.has(id)) {
           deletedIds.push(id);
         }
       });
 
-      // 删除对应的组件（只删除 shapesRef 中有这个 id 的组件）
       if (deletedIds.length > 0) {
         deletedIds.forEach(id => {
-          // 先从 shapesRef 中删除，这样后面的代码不会误判
           shapesRef.current.delete(id);
           componentMapRef.current.delete(id);
           createdShapesRef.current.delete(id);
-          // 同时从 components 中删除
           setComponents(prev => prev.filter(c => c.id !== id));
         });
       }
 
-      // 同步选中状态
       if (args.shape) {
         console.log('[ShapeSelectionChanged] Shape selected:', args.shape.name());
         const shape = args.shape;
         const shapeId = shape.name();
-        // 同时检查 componentMapRef 和 shapesRef 中是否有该 id
         if (componentMapRef.current.has(shapeId) && shapesRef.current.has(shapeId)) {
           setSelectedId(shapeId);
         }
       } else {
         console.log('[ShapeSelectionChanged] No shape selected');
-        // 只有在有选中组件时才清空，使用 ref 避免依赖
         if (selectedIdRef.current && shapesRef.current.has(selectedIdRef.current)) {
           setSelectedId(null);
         }
@@ -378,7 +340,6 @@ function App() {
     };
   }, [spread, snapToCell, checkConflict]);
 
-  // Create shapes for all components when they are loaded
   useEffect(() => {
     if (!spread || components.length === 0) return;
 
@@ -387,21 +348,17 @@ function App() {
     });
   }, [spread, components, createShape]);
 
-  // When selectedId changes, select the corresponding shape
   useEffect(() => {
     if (!spread) return;
 
-    // 设置标志，防止 shape 选中变化触发 ShapeSelectionChanged 事件
     isInternalSelectionRef.current = true;
 
-    // 先取消所有 shape 的选中
     shapesRef.current.forEach((shape) => {
       try {
         shape.isSelected(false);
       } catch {}
     });
 
-    // 然后选中目标 shape
     if (selectedId) {
       const shape = shapesRef.current.get(selectedId);
       if (shape) {
@@ -411,24 +368,23 @@ function App() {
       }
     }
 
-    // 延迟重置标志，确保所有事件都被忽略
     setTimeout(() => {
       isInternalSelectionRef.current = false;
     }, 100);
   }, [spread, selectedId]);
 
-  // Handle drop from component library
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     setDraggingType(null);
-    
+
     if (!spread) return;
     const componentType = e.dataTransfer.getData('componentType');
     if (!componentType) return;
 
     const sheet = spread.getActiveSheet();
-    const rect = hostRef.current?.getBoundingClientRect();
+    const designerHost = document.querySelector('.gc-spread-designer');
+    const rect = designerHost?.getBoundingClientRect();
     if (!rect) return;
 
     const selection = getSelectionRange();
@@ -440,14 +396,14 @@ function App() {
       const dropX = e.clientX - rect.left;
       const dropY = e.clientY - rect.top;
       const defaultSize = DefaultSizeMap[componentType] || { rows: 2, cols: 2 };
-      
+
       let accX = 0, col = 0;
       while (accX < dropX && col < 100) {
         accX += sheet.getColumnWidth(col);
         col++;
       }
       if (col > 0) col--;
-      
+
       let accY = 0, row = 0;
       while (accY < dropY && row < 100) {
         accY += sheet.getRowHeight(row);
@@ -499,12 +455,10 @@ function App() {
     setComponents(prev => prev.map(c => c.id === updated.id ? updated : c));
     componentMapRef.current.set(updated.id, updated);
 
-    // 标记组件正在更新，防止 ShapeSelectionChanged 事件删除它
     updatingComponentRef.current.add(updated.id);
     removeShape(updated.id);
     setTimeout(() => {
       createShape(updated);
-      // 更新完成后移除标记
       updatingComponentRef.current.delete(updated.id);
     }, 50);
   }, [createShape, removeShape, checkConflict]);
@@ -517,7 +471,6 @@ function App() {
 
   const handleSave = useCallback(() => {
     if (spread) {
-      // 只保存组件数据，shape 每次根据组件重新渲染
       localStorage.setItem('smartreport_components', JSON.stringify(components));
     }
   }, [spread, components]);
@@ -539,7 +492,6 @@ function App() {
     URL.revokeObjectURL(url);
   }, [components]);
 
-  // Auto-save
   useEffect(() => {
     const interval = setInterval(() => {
       if (spread && components.length > 0) {
@@ -553,64 +505,21 @@ function App() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-gray-100">
-      {/* Left: SpreadJS Canvas */}
-      <div className="flex-1 flex flex-col">
-        {/* Toolbar */}
-        <div className="h-12 bg-white border-b border-gray-200 flex items-center px-4 gap-2">
-          <button
-            onClick={handleSave}
-            className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors"
-          >
-            <Save size={16} />
-            Save
-          </button>
-          <button
-            onClick={() => spread?.undoManager().undo()}
-            className="p-2 text-gray-600 hover:bg-gray-100 rounded transition-colors"
-          >
-            <Undo size={16} />
-          </button>
-          <button
-            onClick={() => spread?.undoManager().redo()}
-            className="p-2 text-gray-600 hover:bg-gray-100 rounded transition-colors"
-          >
-            <Redo size={16} />
-          </button>
-        </div>
-        
-        {/* Canvas with License Notice */}
-        <div className="flex-1 relative">
-          <div 
-            ref={hostRef} 
-            className={`absolute inset-0 transition-all ${isDragging ? 'ring-4 ring-blue-400 ring-inset' : ''}`}
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-          />
-          {/* License Notice Overlay */}
-          {!spread && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-50/80">
-              <div className="bg-white p-6 rounded-lg shadow-lg max-w-md text-center">
-                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Layers size={24} className="text-blue-600" />
-                </div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">SpreadJS License Required</h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  To use the spreadsheet editor, please obtain a deployment license key from GrapeCity.
-                </p>
-                <a 
-                  href="https://www.grapecity.com.cn/developer/spreadjs/deploy"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-                >
-                  Request Free Trial Key
-                </a>
-              </div>
-            </div>
-          )}
-        </div>
+      {/* Left: SpreadJS Designer */}
+      <div className="flex-1 flex flex-col relative">
+        <SpreadDesigner
+          onWorkbookReady={handleWorkbookReady}
+          styleInfo={{ height: '100%', width: '100%' }}
+        />
+        {/* Drop zone overlay */}
+        <div
+          className={`absolute inset-0 pointer-events-none transition-all ${isDragging ? 'ring-4 ring-blue-400 ring-inset' : ''}`}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          style={{ pointerEvents: isDragging ? 'auto' : 'none' }}
+        />
       </div>
-      
+
       {/* Right Panel */}
       <div className="w-[340px] h-full flex flex-col bg-gray-50 border-l border-gray-200">
         {/* Header */}
@@ -629,7 +538,7 @@ function App() {
         </div>
 
         {/* Component Library */}
-        <ComponentLibrary 
+        <ComponentLibrary
           onDragStart={(type) => { setIsDragging(true); setDraggingType(type); }}
           onDragEnd={() => { setIsDragging(false); setDraggingType(null); }}
         />
@@ -640,7 +549,7 @@ function App() {
             <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Components ({components.length})</span>
           </div>
           <div className="max-h-[200px] overflow-y-auto">
-            <ComponentList 
+            <ComponentList
               components={components}
               selectedId={selectedId}
               onSelect={setSelectedId}
