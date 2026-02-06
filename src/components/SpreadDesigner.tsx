@@ -38,10 +38,11 @@ export class SpreadDesigner extends Component<SpreadDesignerProps> {
   };
 
   render() {
+    const style = this.props.styleInfo || { height: '100vh', width: '100%' };
     return (
       <Designer
         spreadOptions={{ sheetCount: 1 }}
-        styleInfo={this.props.styleInfo || { height: '100vh', width: '100%' }}
+        styleInfo={style as any}
         designerInitialized={this.designerInitialized}
       />
     );

@@ -57,11 +57,14 @@ function App() {
   const isInternalSelectionRef = useRef(false);
   const createdShapesRef = useRef<Set<string>>(new Set());
   const updatingComponentRef = useRef<Set<string>>(new Set());
+  const spreadRef = useRef<GC.Spread.Sheets.Workbook | null>(null);
+  const componentsRef = useRef<SmartComponent[]>([]);
 
   // Designer initialization callback
   const handleWorkbookReady = useCallback((workbook: GC.Spread.Sheets.Workbook, designer: any) => {
     designerRef.current = designer;
     setSpread(workbook);
+    console.log('[SpreadDesigner] Workbook ready:', workbook);
 
     // Load saved components
     const savedComponents = localStorage.getItem('smartreport_components');
@@ -114,7 +117,8 @@ function App() {
   };
 
   const checkConflict = useCallback((newRange: { row: number; col: number; rowCount: number; colCount: number }, excludeId?: string): boolean => {
-    for (const comp of components) {
+    // Use ref to always get current components
+    for (const comp of componentsRef.current) {
       if (excludeId && comp.id === excludeId) continue;
       const existing = parseRange(comp.location);
       if (!existing) continue;
@@ -127,7 +131,7 @@ function App() {
       if (overlap) return true;
     }
     return false;
-  }, [components]);
+  }, []);
 
   const createShape = useCallback((component: SmartComponent) => {
     if (createdShapesRef.current.has(component.id)) {
@@ -190,8 +194,8 @@ function App() {
   }, [spread]);
 
   const snapToCell = useCallback((x: number, y: number, width: number, height: number) => {
-    if (!spread) return { row: 0, col: 0, rowCount: 1, colCount: 1 };
-    const sheet = spread.getActiveSheet();
+    if (!spreadRef.current) return { row: 0, col: 0, rowCount: 1, colCount: 1 };
+    const sheet = spreadRef.current.getActiveSheet();
 
     let accX = 0, col = 0;
     while (col < 100) {
@@ -232,7 +236,7 @@ function App() {
     if (rowCount === 0) rowCount = 1;
 
     return { row, col, rowCount, colCount };
-  }, [spread]);
+  }, []);
 
   const selectedIdRef = useRef<string | null>(null);
 
@@ -240,9 +244,23 @@ function App() {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
 
+  // Sync refs with current state
+  useEffect(() => {
+    spreadRef.current = spread;
+  }, [spread]);
+
+  useEffect(() => {
+    componentsRef.current = components;
+  }, [components]);
+
+  // Bind events to sheet
   useEffect(() => {
     if (!spread) return;
+
     const sheet = spread.getActiveSheet();
+    if (!sheet) return;
+
+    console.log('[EventBinding] Binding events to sheet:', sheet.name?.());
 
     const handleShapeChanged = (_: unknown, args: { shape: GC.Spread.Sheets.Shapes.Shape }) => {
       if (!args.shape) return;
@@ -329,16 +347,21 @@ function App() {
       sheet.bind(GC.Spread.Sheets.Events.ShapeChanged, handleShapeChanged);
       sheet.bind(GC.Spread.Sheets.Events.ShapeRemoved, handleShapeRemoved);
       sheet.bind(GC.Spread.Sheets.Events.ShapeSelectionChanged, handleShapeSelectionChanged);
-    } catch {}
+      console.log('[EventBinding] Events bound successfully');
+    } catch (e) {
+      console.error('[EventBinding] Error binding events:', e);
+    }
 
     return () => {
       try {
         sheet.unbind(GC.Spread.Sheets.Events.ShapeChanged, handleShapeChanged);
         sheet.unbind(GC.Spread.Sheets.Events.ShapeRemoved, handleShapeRemoved);
         sheet.unbind(GC.Spread.Sheets.Events.ShapeSelectionChanged, handleShapeSelectionChanged);
+        console.log('[EventBinding] Events unbound');
       } catch {}
     };
-  }, [spread, snapToCell, checkConflict]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spread]);
 
   useEffect(() => {
     if (!spread || components.length === 0) return;
@@ -383,9 +406,18 @@ function App() {
     if (!componentType) return;
 
     const sheet = spread.getActiveSheet();
-    const designerHost = document.querySelector('.gc-spread-designer');
+
+    // Try multiple selectors to find the designer viewport
+    const designerHost =
+      document.querySelector('.designer') ||
+      document.querySelector('.gc-spread-sheets') ||
+      document.querySelector('.ss-viewport');
+
     const rect = designerHost?.getBoundingClientRect();
-    if (!rect) return;
+    if (!rect) {
+      console.error('[handleDrop] Could not find designer host element');
+      return;
+    }
 
     const selection = getSelectionRange();
     let targetRange: { row: number; col: number; rowCount: number; colCount: number };
