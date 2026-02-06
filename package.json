@@ -13,16 +13,9 @@
     "clean": "rm -rf node_modules .pnpm-store pnpm-lock.yaml && pnpm store prune"
   },
   "dependencies": {
-    "@grapecity-software/spread-sheets": "^19.0.0",
-    "@grapecity-software/spread-sheets-barcode": "^19.0.0",
-    "@grapecity-software/spread-sheets-charts": "^19.0.0",
-    "@grapecity-software/spread-sheets-designer": "^19.0.0",
-    "@grapecity-software/spread-sheets-designer-react": "^19.0.0",
-    "@grapecity-software/spread-sheets-designer-resources-en": "^19.0.0",
-    "@grapecity-software/spread-sheets-io": "^19.0.0",
-    "@grapecity-software/spread-sheets-pdf": "^19.0.0",
-    "@grapecity-software/spread-sheets-print": "^19.0.0",
-    "@grapecity-software/spread-sheets-shapes": "^19.0.0",
+    "@grapecity/spread-sheets": "^18.2.5",
+    "@grapecity/spread-sheets-charts": "^18.2.5",
+    "@grapecity/spread-sheets-shapes": "^18.2.5",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.2",
     "@radix-ui/react-alert-dialog": "^1.1.4",
@@ -91,7 +84,7 @@
     "tailwindcss": "v3.4.16",
     "typescript": "~5.6.2",
     "typescript-eslint": "^8.15.0",
-    "vite": "^6.4.1",
+    "vite": "^6.0.1",
     "vite-plugin-source-identifier": "1.1.2"
   }
 }
