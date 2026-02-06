@@ -40,6 +40,10 @@ const DefaultSizeMap: Record<string, { rows: number; cols: number }> = {
   Text: { rows: 1, cols: 2 },
   Table: { rows: 4, cols: 5 },
   Chart: { rows: 3, cols: 4 },
+  List: { rows: 4, cols: 3 },
+  Milestone: { rows: 2, cols: 2 },
+  Gantt: { rows: 4, cols: 6 },
+  // 兼容旧类型
   Image: { rows: 3, cols: 3 },
   Formula: { rows: 1, cols: 2 },
 };
@@ -48,6 +52,10 @@ const TypeNames: Record<string, string> = {
   Text: '文本',
   Table: '表格',
   Chart: '图表',
+  List: '列表',
+  Milestone: '里程碑',
+  Gantt: '甘特表',
+  // 兼容旧类型
   Image: '图片',
   Formula: '公式',
 };
@@ -158,7 +166,7 @@ function App() {
     const range = parseRange(component.location);
     if (!range) return;
 
-    const borderColor = component.style?.borderColor || DefaultColors[component.type].border;
+    const borderColor = component.style?.borderColor || DefaultColors[component.type]?.border || '#9ca3af';
 
     let x = 0, y = 0, width = 0, height = 0;
     for (let i = 0; i < range.col; i++) x += sheet.getColumnWidth(i);

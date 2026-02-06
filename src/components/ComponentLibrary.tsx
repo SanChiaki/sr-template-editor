@@ -1,6 +1,6 @@
 import React from 'react';
 import { ComponentTypes, DefaultColors } from '../types/SmartComponent';
-import { Type, Table2, BarChart3, ImageIcon, Calculator, GripVertical } from 'lucide-react';
+import { Type, Table2, BarChart3, List, Flag, Calendar, GripVertical, ImageIcon, Calculator } from 'lucide-react';
 
 interface Props {
   onDragStart: (type: string) => void;
@@ -11,6 +11,10 @@ const ComponentIcons: Record<string, React.ReactNode> = {
   Text: <Type size={20} />,
   Table: <Table2 size={20} />,
   Chart: <BarChart3 size={20} />,
+  List: <List size={20} />,
+  Milestone: <Flag size={20} />,
+  Gantt: <Calendar size={20} />,
+  // 兼容旧类型
   Image: <ImageIcon size={20} />,
   Formula: <Calculator size={20} />,
 };
@@ -19,6 +23,10 @@ const TypeNames: Record<string, string> = {
   Text: '文本',
   Table: '表格',
   Chart: '图表',
+  List: '列表',
+  Milestone: '里程碑',
+  Gantt: '甘特表',
+  // 兼容旧类型
   Image: '图片',
   Formula: '公式',
 };
@@ -27,6 +35,10 @@ const DefaultSizes: Record<string, string> = {
   Text: '2x1',
   Table: '5x4',
   Chart: '4x3',
+  List: '3x4',
+  Milestone: '2x2',
+  Gantt: '4x6',
+  // 兼容旧类型
   Image: '3x3',
   Formula: '2x1',
 };

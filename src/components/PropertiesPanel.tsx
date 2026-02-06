@@ -9,6 +9,18 @@ interface Props {
   conflictWarning?: string | null;
 }
 
+const TypeNames: Record<string, string> = {
+  Text: '文本',
+  Table: '表格',
+  Chart: '图表',
+  List: '列表',
+  Milestone: '里程碑',
+  Gantt: '甘特表',
+  // 兼容旧类型
+  Image: '图片',
+  Formula: '公式',
+};
+
 export const PropertiesPanel: React.FC<Props> = ({ component, onUpdate, onDelete, conflictWarning }) => {
   const [localPrompt, setLocalPrompt] = useState('');
 
@@ -72,7 +84,7 @@ export const PropertiesPanel: React.FC<Props> = ({ component, onUpdate, onDelete
             <FileText size={12} />
             类型
           </label>
-          <div className="grid grid-cols-5 gap-1">
+          <div className="grid grid-cols-3 gap-1">
             {ComponentTypes.map(t => (
               <button
                 key={t}
@@ -86,11 +98,7 @@ export const PropertiesPanel: React.FC<Props> = ({ component, onUpdate, onDelete
                   backgroundColor: component.type === t ? DefaultColors[t].border : undefined
                 }}
               >
-                {t === 'Text' ? '文本' :
-                 t === 'Table' ? '表格' :
-                 t === 'Chart' ? '图表' :
-                 t === 'Image' ? '图片' :
-                 t === 'Formula' ? '公式' : t}
+                {TypeNames[t]}
               </button>
             ))}
           </div>
