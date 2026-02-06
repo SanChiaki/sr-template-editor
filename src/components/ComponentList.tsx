@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { SmartComponent, DefaultColors } from '../types/SmartComponent';
 import { Type, Table2, BarChart3, ImageIcon, Calculator } from 'lucide-react';
 
@@ -17,11 +17,23 @@ const ComponentIcons: Record<string, React.ReactNode> = {
 };
 
 export const ComponentList: React.FC<Props> = ({ components, selectedId, onSelect }) => {
+  const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // 当 selectedId 变化时，自动滚动到对应的组件
+  useEffect(() => {
+    if (selectedId) {
+      const element = itemRefs.current.get(selectedId);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  }, [selectedId]);
+
   if (components.length === 0) {
     return (
       <div className="p-4 text-center text-gray-400 text-sm">
-        <p>No components yet.</p>
-        <p className="text-xs mt-1">Drag from library above</p>
+        <p>暂无组件</p>
+        <p className="text-xs mt-1">从上方库中拖拽添加</p>
       </div>
     );
   }
@@ -31,6 +43,11 @@ export const ComponentList: React.FC<Props> = ({ components, selectedId, onSelec
       {components.map(comp => (
         <div
           key={comp.id}
+          ref={el => {
+            if (el) {
+              itemRefs.current.set(comp.id, el);
+            }
+          }}
           onClick={() => onSelect(comp.id)}
           className={`flex items-center gap-2 p-2.5 rounded-lg cursor-pointer transition-all ${
             selectedId === comp.id
@@ -40,9 +57,9 @@ export const ComponentList: React.FC<Props> = ({ components, selectedId, onSelec
         >
           <span
             className="w-6 h-6 rounded flex items-center justify-center"
-            style={{ 
+            style={{
               backgroundColor: DefaultColors[comp.type].bg,
-              color: DefaultColors[comp.type].border 
+              color: DefaultColors[comp.type].border
             }}
           >
             {ComponentIcons[comp.type]}

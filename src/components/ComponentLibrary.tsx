@@ -15,6 +15,14 @@ const ComponentIcons: Record<string, React.ReactNode> = {
   Formula: <Calculator size={20} />,
 };
 
+const TypeNames: Record<string, string> = {
+  Text: '文本',
+  Table: '表格',
+  Chart: '图表',
+  Image: '图片',
+  Formula: '公式',
+};
+
 const DefaultSizes: Record<string, string> = {
   Text: '2x1',
   Table: '5x4',
@@ -34,7 +42,7 @@ export const ComponentLibrary: React.FC<Props> = ({ onDragStart, onDragEnd }) =>
     <div className="p-4 bg-white border-b border-gray-200">
       <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
         <span className="w-1.5 h-4 bg-blue-500 rounded"></span>
-        Component Library
+        组件库
       </h3>
       <div className="grid grid-cols-2 gap-2">
         {ComponentTypes.map(type => (
@@ -49,14 +57,14 @@ export const ComponentLibrary: React.FC<Props> = ({ onDragStart, onDragEnd }) =>
             <GripVertical size={14} className="text-gray-400 group-hover:text-gray-600" />
             <span style={{ color: DefaultColors[type].border }}>{ComponentIcons[type]}</span>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-gray-700 truncate">{type}</div>
+              <div className="text-sm font-medium text-gray-700 truncate">{TypeNames[type]}</div>
               <div className="text-xs text-gray-400">{DefaultSizes[type]}</div>
             </div>
           </div>
         ))}
       </div>
       <p className="text-xs text-gray-400 mt-3 text-center">
-        Drag to canvas or selected range
+        拖拽到画布或选中区域
       </p>
     </div>
   );

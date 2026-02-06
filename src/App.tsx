@@ -44,6 +44,14 @@ const DefaultSizeMap: Record<string, { rows: number; cols: number }> = {
   Formula: { rows: 1, cols: 2 },
 };
 
+const TypeNames: Record<string, string> = {
+  Text: '文本',
+  Table: '表格',
+  Chart: '图表',
+  Image: '图片',
+  Formula: '公式',
+};
+
 function App() {
   const [spread, setSpread] = useState<GC.Spread.Sheets.Workbook | null>(null);
   const [components, setComponents] = useState<SmartComponent[]>([]);
@@ -66,13 +74,13 @@ function App() {
     setSpread(workbook);
     console.log('[SpreadDesigner] Workbook ready:', workbook);
 
-    // Load saved components
+      // 加载保存的组件
     const savedComponents = localStorage.getItem('smartreport_components');
     if (savedComponents) {
       try {
         setComponents(JSON.parse(savedComponents));
       } catch (e) {
-        console.error('Load components error:', e);
+        console.error('加载组件失败:', e);
       }
     }
   }, []);
@@ -135,16 +143,16 @@ function App() {
 
   const createShape = useCallback((component: SmartComponent) => {
     if (createdShapesRef.current.has(component.id)) {
-      console.log('[createShape] Already created, skipping:', component.id);
+      console.log('[createShape] 已创建，跳过:', component.id);
       return;
     }
 
-    console.log('[createShape] Creating shape for:', component.id);
+    console.log('[createShape] 创建形状:', component.id);
 
     if (!spread) return;
     const sheet = spread.getActiveSheet();
     if (!sheet) {
-      console.log('[createShape] Sheet not ready, skipping:', component.id);
+      console.log('[createShape] 表格未就绪，跳过:', component.id);
       return;
     }
     const range = parseRange(component.location);
@@ -182,7 +190,7 @@ function App() {
       componentMapRef.current.set(component.id, component);
       createdShapesRef.current.add(component.id);
     } catch (e) {
-      console.error('Error creating shape:', e);
+      console.error('创建形状失败:', e);
     }
   }, [spread]);
 
@@ -265,7 +273,7 @@ function App() {
     const sheet = spread.getActiveSheet();
     if (!sheet) return;
 
-    console.log('[EventBinding] Binding events to sheet:', sheet.name?.());
+    console.log('[EventBinding] 绑定事件到表格:', sheet.name?.());
 
     const handleShapeChanged = (_: unknown, args: { shape: GC.Spread.Sheets.Shapes.Shape }) => {
       if (!args.shape) return;
@@ -280,16 +288,16 @@ function App() {
         if (comp && comp.location !== newLocation) {
           const hasConflict = checkConflict(snapped, shapeId);
           if (hasConflict) {
-            setConflictWarning('Area conflicts with existing component');
+            setConflictWarning('区域与现有组件冲突');
             setTimeout(() => setConflictWarning(null), 3000);
           }
 
-          console.log('[ShapeChanged] Updating location for:', shapeId, 'from', comp.location, 'to', newLocation);
+          console.log('[ShapeChanged] 更新位置:', shapeId, '从', comp.location, '到', newLocation);
           setComponents(prev => prev.map(c => c.id === shapeId ? { ...c, location: newLocation } : c));
           componentMapRef.current.set(shapeId, { ...comp, location: newLocation });
         }
       } catch (e) {
-        console.error('[ShapeChanged] Error:', e);
+        console.error('[ShapeChanged] 错误:', e);
       }
     };
 
@@ -310,7 +318,7 @@ function App() {
     const handleShapeSelectionChanged = (_: unknown, args: { shape?: GC.Spread.Sheets.Shapes.Shape }) => {
       console.log('[ShapeSelectionChanged] args:', args);
       if (isInternalSelectionRef.current) {
-        console.log('[ShapeSelectionChanged] Ignored due to internal selection');
+        console.log('[ShapeSelectionChanged] 因内部选择而忽略');
         return;
       }
 
@@ -334,14 +342,14 @@ function App() {
       }
 
       if (args.shape) {
-        console.log('[ShapeSelectionChanged] Shape selected:', args.shape.name());
+        console.log('[ShapeSelectionChanged] 选中形状:', args.shape.name());
         const shape = args.shape;
         const shapeId = shape.name();
         if (componentMapRef.current.has(shapeId) && shapesRef.current.has(shapeId)) {
           setSelectedId(shapeId);
         }
       } else {
-        console.log('[ShapeSelectionChanged] No shape selected');
+        console.log('[ShapeSelectionChanged] 未选中形状');
         if (selectedIdRef.current && shapesRef.current.has(selectedIdRef.current)) {
           setSelectedId(null);
         }
@@ -352,9 +360,9 @@ function App() {
       sheet.bind(GC.Spread.Sheets.Events.ShapeChanged, handleShapeChanged);
       sheet.bind(GC.Spread.Sheets.Events.ShapeRemoved, handleShapeRemoved);
       sheet.bind(GC.Spread.Sheets.Events.ShapeSelectionChanged, handleShapeSelectionChanged);
-      console.log('[EventBinding] Events bound successfully');
+      console.log('[EventBinding] 事件绑定成功');
     } catch (e) {
-      console.error('[EventBinding] Error binding events:', e);
+      console.error('[EventBinding] 绑定事件失败:', e);
     }
 
     return () => {
@@ -362,7 +370,7 @@ function App() {
         sheet.unbind(GC.Spread.Sheets.Events.ShapeChanged, handleShapeChanged);
         sheet.unbind(GC.Spread.Sheets.Events.ShapeRemoved, handleShapeRemoved);
         sheet.unbind(GC.Spread.Sheets.Events.ShapeSelectionChanged, handleShapeSelectionChanged);
-        console.log('[EventBinding] Events unbound');
+        console.log('[EventBinding] 事件已解绑');
       } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -373,7 +381,7 @@ function App() {
 
     const sheet = spread.getActiveSheet();
     if (!sheet) {
-      console.log('[CreateShapesEffect] Sheet not ready, deferring shape creation');
+      console.log('[CreateShapesEffect] 表格未就绪，延迟创建形状');
       return;
     }
 
@@ -426,7 +434,7 @@ function App() {
 
     const rect = designerHost?.getBoundingClientRect();
     if (!rect) {
-      console.error('[handleDrop] Could not find designer host element');
+      console.error('[handleDrop] 未找到设计器宿主元素');
       return;
     }
 
@@ -458,7 +466,7 @@ function App() {
     }
 
     if (checkConflict(targetRange)) {
-      setConflictWarning('Area conflicts with existing component');
+      setConflictWarning('区域与现有组件冲突');
       setTimeout(() => setConflictWarning(null), 3000);
       return;
     }
@@ -470,7 +478,7 @@ function App() {
       location,
       type: componentType as SmartComponent['type'],
       prompt: '',
-      name: `${componentType} ${components.length + 1}`,
+      name: `${TypeNames[componentType] || componentType} ${components.length + 1}`,
     };
 
     setComponents(prev => [...prev, newComp]);
@@ -489,7 +497,7 @@ function App() {
     if (oldComp && oldComp.location !== updated.location) {
       const newRange = parseRange(updated.location);
       if (newRange && checkConflict(newRange, updated.id)) {
-        setConflictWarning('Area conflicts with existing component');
+        setConflictWarning('区域与现有组件冲突');
         setTimeout(() => setConflictWarning(null), 3000);
         return;
       }
@@ -576,7 +584,7 @@ function App() {
             className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
           >
             <Download size={14} />
-            Export
+            导出配置
           </button>
         </div>
 
@@ -589,7 +597,7 @@ function App() {
         {/* Component List */}
         <div className="border-b border-gray-200 bg-white">
           <div className="px-4 py-2 flex items-center justify-between border-b border-gray-100">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Components ({components.length})</span>
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">组件列表 ({components.length})</span>
           </div>
           <div className="max-h-[200px] overflow-y-auto">
             <ComponentList
@@ -613,7 +621,7 @@ function App() {
       {isDragging && (
         <div className="fixed inset-0 pointer-events-none z-50 flex items-center justify-center">
           <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg text-sm font-medium">
-            Drop {draggingType} component on canvas
+            在画布上放置 {TypeNames[draggingType || ''] || draggingType} 组件
           </div>
         </div>
       )}
