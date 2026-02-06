@@ -143,6 +143,10 @@ function App() {
 
     if (!spread) return;
     const sheet = spread.getActiveSheet();
+    if (!sheet) {
+      console.log('[createShape] Sheet not ready, skipping:', component.id);
+      return;
+    }
     const range = parseRange(component.location);
     if (!range) return;
 
@@ -185,6 +189,7 @@ function App() {
   const removeShape = useCallback((id: string) => {
     if (!spread) return;
     const sheet = spread.getActiveSheet();
+    if (!sheet) return;
     if (shapesRef.current.has(id)) {
       try { sheet.shapes.remove(id); } catch {}
       shapesRef.current.delete(id);
@@ -365,6 +370,12 @@ function App() {
 
   useEffect(() => {
     if (!spread || components.length === 0) return;
+
+    const sheet = spread.getActiveSheet();
+    if (!sheet) {
+      console.log('[CreateShapesEffect] Sheet not ready, deferring shape creation');
+      return;
+    }
 
     components.forEach(comp => {
       createShape(comp);
