@@ -1,25 +1,52 @@
 {
-  "name": "react_repo",
-  "private": true,
-  "version": "0.0.0",
+  "name": "smart-report-designer",
+  "private": false,
+  "version": "0.1.0",
   "type": "module",
+  "description": "基于 SpreadJS 的智能报表设计器组件",
+  "main": "./dist/smart-report-designer.cjs.js",
+  "module": "./dist/smart-report-designer.es.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/smart-report-designer.es.js",
+      "require": "./dist/smart-report-designer.cjs.js"
+    },
+    "./style.css": "./dist/smart-report-designer.css"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "spreadjs",
+    "report",
+    "designer",
+    "react",
+    "smart-report",
+    "excel",
+    "spreadsheet"
+  ],
+  "author": "",
+  "license": "MIT",
   "scripts": {
-    "dev": "npm install --prefer-offline && vite",
-    "build": "npm install --prefer-offline && rm -rf node_modules/.vite-temp && tsc -b && vite build",
-    "build:prod": "npm install --prefer-offline && rm -rf node_modules/.vite-temp && tsc -b && BUILD_MODE=prod vite build",
-    "lint": "npm install --prefer-offline && eslint .",
-    "preview": "npm install --prefer-offline && vite preview",
-    "install-deps": "npm install --prefer-offline",
-    "clean": "rm -rf node_modules .npm-store npm-lock.yaml && npm store prune"
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "build:lib": "tsc -p tsconfig.lib.json && vite build --mode lib",
+    "build:prod": "BUILD_MODE=prod vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "clean": "rm -rf node_modules dist .npm-store npm-lock.yaml && npm store prune"
   },
   "dependencies": {
     "@grapecity/spread-excelio": "^18.2.5",
-    "@grapecity/spread-sheets": "^18.2.5",
+    "@grapecity/spread-sheets": "^18.0.0",
     "@grapecity/spread-sheets-barcode": "^18.2.5",
-    "@grapecity/spread-sheets-charts": "^18.2.5",
-    "@grapecity/spread-sheets-designer": "^18.2.5",
-    "@grapecity/spread-sheets-designer-react": "^18.2.5",
-    "@grapecity/spread-sheets-designer-resources-cn": "^18.2.5",
+    "@grapecity/spread-sheets-charts": "^18.0.0",
+    "@grapecity/spread-sheets-designer": "^18.0.0",
+    "@grapecity/spread-sheets-designer-react": "^18.0.0",
+    "@grapecity/spread-sheets-designer-resources-cn": "^18.0.0",
     "@grapecity/spread-sheets-designer-resources-en": "^18.2.5",
     "@grapecity/spread-sheets-io": "^18.2.5",
     "@grapecity/spread-sheets-languagepackages": "^18.2.5",
@@ -27,8 +54,8 @@
     "@grapecity/spread-sheets-pivot-addon": "^18.2.5",
     "@grapecity/spread-sheets-print": "^18.2.5",
     "@grapecity/spread-sheets-react": "^18.2.5",
-    "@grapecity/spread-sheets-resources-zh": "^18.2.5",
-    "@grapecity/spread-sheets-shapes": "^18.2.5",
+    "@grapecity/spread-sheets-resources-zh": "^18.0.0",
+    "@grapecity/spread-sheets-shapes": "^18.0.0",
     "@grapecity/spread-sheets-tablesheet": "^18.2.5",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.2",
@@ -67,9 +94,9 @@
     "lucide-react": "^0.364.0",
     "next-themes": "^0.4.4",
     "playwright": "1.57.0",
-    "react": "^18.3.1",
+    "react": "^18.0.0",
     "react-day-picker": "8.10.1",
-    "react-dom": "^18.3.1",
+    "react-dom": "^18.0.0",
     "react-hook-form": "^7.54.2",
     "react-resizable-panels": "^2.1.7",
     "react-router-dom": "^6",
@@ -80,6 +107,17 @@
     "uuid": "^13.0.0",
     "vaul": "^1.1.2",
     "zod": "^3.24.1"
+  },
+  "peerDependencies": {
+    "@grapecity/spread-sheets": "^18.0.0",
+    "@grapecity/spread-sheets-charts": "^18.0.0",
+    "@grapecity/spread-sheets-designer": "^18.0.0",
+    "@grapecity/spread-sheets-designer-react": "^18.0.0",
+    "@grapecity/spread-sheets-designer-resources-cn": "^18.0.0",
+    "@grapecity/spread-sheets-resources-zh": "^18.0.0",
+    "@grapecity/spread-sheets-shapes": "^18.0.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",
@@ -99,6 +137,6 @@
     "typescript": "~5.6.2",
     "typescript-eslint": "^8.15.0",
     "vite": "^6.0.1",
-    "vite-plugin-source-identifier": "1.1.2"
+    "vite-plugin-dts": "^4.5.4"
   }
 }

@@ -2,7 +2,7 @@ import React from 'react';
 import { ComponentTypes, DefaultColors } from '../types/SmartComponent';
 import { Type, Table2, BarChart3, List, Flag, Calendar, GripVertical, ImageIcon, Calculator } from 'lucide-react';
 
-interface Props {
+export interface ComponentLibraryProps {
   onDragStart: (type: string) => void;
   onDragEnd: () => void;
 }
@@ -43,7 +43,7 @@ const DefaultSizes: Record<string, string> = {
   Formula: '2x1',
 };
 
-export const ComponentLibrary: React.FC<Props> = ({ onDragStart, onDragEnd }) => {
+export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({ onDragStart, onDragEnd }) => {
   const handleDragStart = (e: React.DragEvent, type: string) => {
     e.dataTransfer.setData('componentType', type);
     e.dataTransfer.effectAllowed = 'copy';

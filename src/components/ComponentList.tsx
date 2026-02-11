@@ -2,7 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import { SmartComponent, DefaultColors } from '../types/SmartComponent';
 import { Type, Table2, BarChart3, List, Flag, Calendar, ImageIcon, Calculator } from 'lucide-react';
 
-interface Props {
+export interface ComponentListProps {
   components: SmartComponent[];
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -23,7 +23,7 @@ const ComponentIcons: Record<string, React.ReactNode> = {
 // 默认颜色（用于兼容旧类型）
 const FallbackColor = { bg: 'rgba(156, 163, 175, 0.1)', border: '#9ca3af' };
 
-export const ComponentList: React.FC<Props> = ({ components, selectedId, onSelect }) => {
+export const ComponentList: React.FC<ComponentListProps> = ({ components, selectedId, onSelect }) => {
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   // 当 selectedId 变化时，自动滚动到对应的组件

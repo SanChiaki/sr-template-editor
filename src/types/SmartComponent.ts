@@ -1,7 +1,9 @@
+export type SmartComponentType = 'Text' | 'Table' | 'Chart' | 'List' | 'Milestone' | 'Gantt' | 'Image' | 'Formula';
+
 export interface SmartComponent {
   id: string;
   location: string;
-  type: 'Text' | 'Table' | 'Chart' | 'List' | 'Milestone' | 'Gantt';
+  type: SmartComponentType;
   prompt: string;
   name: string;
   shapeId?: string;
@@ -12,7 +14,7 @@ export interface SmartComponent {
   };
 }
 
-export const ComponentTypes = ['Text', 'Table', 'Chart', 'List', 'Milestone', 'Gantt'] as const;
+export const ComponentTypes: SmartComponentType[] = ['Text', 'Table', 'Chart', 'List', 'Milestone', 'Gantt'];
 
 export const DefaultColors = {
   Text: { bg: 'rgba(59, 130, 246, 0.1)', border: '#3b82f6' },

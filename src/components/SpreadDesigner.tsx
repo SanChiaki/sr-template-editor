@@ -19,7 +19,7 @@ import {Designer}  from '@grapecity/spread-sheets-designer-react';
 // Set Chinese culture
 GC.Spread.Common.CultureManager.culture('zh-cn');
 
-interface SpreadDesignerProps {
+export interface SpreadDesignerProps {
   onWorkbookReady?: (workbook: GC.Spread.Sheets.Workbook, designer: any) => void;
   styleInfo?: React.CSSProperties;
 }

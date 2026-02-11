@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { SmartComponent, ComponentTypes, DefaultColors } from '../types/SmartComponent';
 import { Trash2, MapPin, Type, FileText, Sparkles, AlertCircle } from 'lucide-react';
 
-interface Props {
+export interface PropertiesPanelProps {
   component: SmartComponent | null;
   onUpdate: (component: SmartComponent) => void;
   onDelete: (id: string) => void;
@@ -21,7 +21,7 @@ const TypeNames: Record<string, string> = {
   Formula: '公式',
 };
 
-export const PropertiesPanel: React.FC<Props> = ({ component, onUpdate, onDelete, conflictWarning }) => {
+export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ component, onUpdate, onDelete, conflictWarning }) => {
   const [localPrompt, setLocalPrompt] = useState('');
 
   useEffect(() => {
