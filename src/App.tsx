@@ -15,7 +15,7 @@ import { SmartComponent, DefaultColors } from './types/SmartComponent';
 import { ComponentLibrary } from './components/ComponentLibrary';
 import { ComponentList } from './components/ComponentList';
 import { PropertiesPanel } from './components/PropertiesPanel';
-import { Download, Layers } from 'lucide-react';
+import { Download, Layers, Upload } from 'lucide-react';
 
 const colLetterToIndex = (letters: string): number => {
   let result = 0;
@@ -537,9 +537,9 @@ function App() {
 
   const handleExport = useCallback(() => {
     const config = {
-      version: '1.0',
-      exportedAt: new Date().toISOString(),
-      components: components.map(({ id, location, type, prompt, name, style }) => ({
+      template_id: '',
+      version: '',
+      component_list: components.map(({ id, location, type, prompt, name, style }) => ({
         id, location, type, prompt, name, style
       }))
     };
@@ -551,6 +551,66 @@ function App() {
     a.click();
     URL.revokeObjectURL(url);
   }, [components]);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImport = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        const config = JSON.parse(content);
+
+        if (!config.component_list || !Array.isArray(config.component_list)) {
+          alert('配置文件格式错误：缺少 component_list 字段');
+          return;
+        }
+
+        // 清除现有组件和形状
+        components.forEach(comp => {
+          removeShape(comp.id);
+        });
+        createdShapesRef.current.clear();
+
+        // 设置新组件
+        const importedComponents: SmartComponent[] = config.component_list.map((comp: SmartComponent) => ({
+          id: comp.id || uuidv4(),
+          location: comp.location,
+          type: comp.type,
+          prompt: comp.prompt || '',
+          name: comp.name,
+          style: comp.style
+        }));
+
+        setComponents(importedComponents);
+        setSelectedId(null);
+
+        // 延迟创建形状，等待表格准备就绪
+        setTimeout(() => {
+          importedComponents.forEach((comp: SmartComponent) => {
+            createShape(comp);
+          });
+        }, 100);
+
+        // 保存到本地存储
+        localStorage.setItem('smartreport_components', JSON.stringify(importedComponents));
+      } catch (error) {
+        console.error('导入配置失败:', error);
+        alert('导入失败：配置文件格式错误');
+      }
+    };
+    reader.readAsText(file);
+
+    // 重置文件输入
+    e.target.value = '';
+  }, [components, createShape, removeShape]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -588,14 +648,30 @@ function App() {
             <Layers size={20} className="text-blue-600" />
             <h2 className="text-lg font-semibold text-gray-800">SmartReport</h2>
           </div>
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
-          >
-            <Download size={14} />
-            导出配置
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleImport}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+            >
+              <Upload size={14} />
+              导入配置
+            </button>
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm"
+            >
+              <Download size={14} />
+              导出配置
+            </button>
+          </div>
         </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json,application/json"
+          onChange={handleFileChange}
+          className="hidden"
+        />
 
         {/* Component Library */}
         <ComponentLibrary
