@@ -18,3 +18,6 @@ export { useIsMobile } from './hooks/use-mobile';
 
 // 工具函数导出
 export { cn } from './lib/utils';
+
+// Excel 导入导出工具函数
+export { exportExcel, importExcel, type ExcelExportOptions, type ExcelImportOptions } from './lib/excel-utils';

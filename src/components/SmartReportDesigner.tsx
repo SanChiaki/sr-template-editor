@@ -4,6 +4,7 @@ import GC from '@grapecity/spread-sheets';
 import '@grapecity/spread-sheets-shapes';
 import '@grapecity/spread-sheets-charts';
 import '@grapecity/spread-sheets/styles/gc.spread.sheets.excel2013white.css';
+import * as ExcelIO from '@grapecity/spread-excelio';
 
 // Import SpreadJS Designer component
 import { SpreadDesigner } from './SpreadDesigner';
@@ -12,7 +13,7 @@ import { SmartComponent, DefaultColors } from '../types/SmartComponent';
 import { ComponentLibrary } from './ComponentLibrary';
 import { ComponentList } from './ComponentList';
 import { PropertiesPanel } from './PropertiesPanel';
-import { Download, Layers, Upload } from 'lucide-react';
+import { Download, Layers, Upload, FileSpreadsheet } from 'lucide-react';
 
 // License key - can be set from outside
 let licenseKey = '';
@@ -95,6 +96,10 @@ export interface SmartReportDesignerProps {
   className?: string;
   /** 样式 */
   style?: React.CSSProperties;
+  /** 导出 Excel 回调 */
+  onExportExcel?: (blob: Blob) => void;
+  /** 导入 Excel 回调，返回组件列表 */
+  onImportExcel?: (blob: Blob) => Promise<SmartComponent[]> | SmartComponent[];
 }
 
 export function SmartReportDesigner({
@@ -114,6 +119,8 @@ export function SmartReportDesigner({
   onConflict,
   className = '',
   style,
+  onExportExcel,
+  onImportExcel,
 }: SmartReportDesignerProps) {
   const [spread, setSpread] = useState<GC.Spread.Sheets.Workbook | null>(null);
   const [components, setComponents] = useState<SmartComponent[]>(initialComponents);
@@ -647,6 +654,160 @@ export function SmartReportDesigner({
     e.target.value = '';
   }, [components, createShape, removeShape]);
 
+  // 清除所有 shapes（用于导出 Excel）
+  const clearAllShapes = useCallback(() => {
+    if (!spread) return;
+    const sheet = spread.getActiveSheet();
+    if (!sheet) return;
+
+    // 临时保存 shapes 以便后续恢复
+    const shapeData: { id: string; component: SmartComponent }[] = [];
+    shapesRef.current.forEach((shape, id) => {
+      const comp = componentMapRef.current.get(id);
+      if (comp) {
+        shapeData.push({ id, component: comp });
+      }
+      try {
+        sheet.shapes.remove(id);
+      } catch (e) {
+        console.error('移除 shape 失败:', e);
+      }
+    });
+    shapesRef.current.clear();
+    componentMapRef.current.clear();
+    createdShapesRef.current.clear();
+
+    return shapeData;
+  }, [spread]);
+
+  // 恢复所有 shapes
+  const restoreAllShapes = useCallback((shapeData: { id: string; component: SmartComponent }[]) => {
+    if (!spread) return;
+
+    shapeData.forEach(({ component }) => {
+      createShape(component);
+    });
+  }, [spread, createShape]);
+
+  // 导出 Excel
+  const handleExportExcel = useCallback(async () => {
+    if (!spread) {
+      alert('SpreadJS 尚未初始化');
+      return;
+    }
+
+    try {
+      // 1. 临时移除所有 shapes
+      const shapeData = clearAllShapes();
+
+      // 2. 导出 Excel
+      const excelIO = new (ExcelIO as any).IO();
+      const json = spread.toJSON();
+
+      excelIO.save(json, (blob: Blob) => {
+        // 3. 触发回调
+        if (onExportExcel) {
+          onExportExcel(blob);
+        }
+
+        // 4. 下载文件
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'template.xlsx';
+        a.click();
+        URL.revokeObjectURL(url);
+
+        // 5. 恢复 shapes
+        if (shapeData && shapeData.length > 0) {
+          setTimeout(() => {
+            restoreAllShapes(shapeData);
+          }, 100);
+        }
+      }, (error: any) => {
+        console.error('导出 Excel 失败:', error);
+        alert('导出 Excel 失败: ' + (error?.errorMessage || '未知错误'));
+
+        // 错误时也要恢复 shapes
+        if (shapeData && shapeData.length > 0) {
+          restoreAllShapes(shapeData);
+        }
+      });
+    } catch (error) {
+      console.error('导出 Excel 失败:', error);
+      alert('导出 Excel 失败');
+    }
+  }, [spread, clearAllShapes, restoreAllShapes, onExportExcel]);
+
+  // Excel 文件输入引用
+  const excelFileInputRef = useRef<HTMLInputElement>(null);
+
+  // 导入 Excel
+  const handleImportExcel = useCallback(() => {
+    excelFileInputRef.current?.click();
+  }, []);
+
+  // 处理 Excel 文件导入
+  const handleExcelFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      if (!spread) {
+        alert('SpreadJS 尚未初始化');
+        return;
+      }
+
+      const excelIO = new (ExcelIO as any).IO();
+
+      // 1. 加载 Excel 到 SpreadJS
+      excelIO.open(file, async (json: any) => {
+        // 清除现有 shapes
+        componentsRef.current.forEach(comp => {
+          removeShape(comp.id);
+        });
+        shapesRef.current.clear();
+        componentMapRef.current.clear();
+        createdShapesRef.current.clear();
+
+        // 加载 JSON 到 workbook
+        spread.fromJSON(json);
+
+        // 2. 获取导入的组件列表（通过回调）
+        let importedComponents: SmartComponent[] = [];
+        if (onImportExcel) {
+          try {
+            const result = onImportExcel(file);
+            importedComponents = await Promise.resolve(result);
+          } catch (error) {
+            console.error('获取组件列表失败:', error);
+          }
+        }
+
+        // 3. 设置组件状态
+        setComponents(importedComponents);
+        setSelectedId(null);
+
+        // 4. 根据组件渲染 shapes
+        if (importedComponents.length > 0) {
+          setTimeout(() => {
+            importedComponents.forEach((comp: SmartComponent) => {
+              createShape(comp);
+            });
+          }, 100);
+        }
+      }, (error: any) => {
+        console.error('加载 Excel 失败:', error);
+        alert('加载 Excel 失败: ' + (error?.errorMessage || '未知错误'));
+      });
+    } catch (error) {
+      console.error('导入 Excel 失败:', error);
+      alert('导入 Excel 失败');
+    }
+
+    e.target.value = '';
+  }, [spread, createShape, removeShape, onImportExcel]);
+
   const selectedComponent = useMemo(() => {
     return components.find(c => c.id === selectedId) || null;
   }, [components, selectedId]);
@@ -677,8 +838,10 @@ export function SmartReportDesigner({
         setTimeout(() => createShape(newComp), 50);
         return newComp;
       },
+      exportExcel: handleExportExcel,
+      importExcel: handleImportExcel,
     };
-  }, [getComponents, getSpread, getDesigner, createShape, clearComponents]);
+  }, [getComponents, getSpread, getDesigner, createShape, clearComponents, handleExportExcel, handleImportExcel]);
 
   return (
     <div className={`flex h-screen w-screen overflow-hidden bg-gray-100 ${className}`} style={style}>
@@ -705,16 +868,13 @@ export function SmartReportDesigner({
         {/* Header */}
         <div className="p-4 bg-white border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Layers size={20} className="text-blue-600" />
-            <h2 className="text-lg font-semibold text-gray-800">{title}</h2>
-          </div>
-          <div className="flex items-center gap-2">
             {extraHeaderActions}
             {!hideImportExport && (
               <>
                 <button
                   onClick={handleImport}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+                  title="导入配置 (JSON)"
                 >
                   <Upload size={14} />
                   导入配置
@@ -722,9 +882,26 @@ export function SmartReportDesigner({
                 <button
                   onClick={handleExport}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm"
+                  title="导出配置 (JSON)"
                 >
                   <Download size={14} />
                   导出配置
+                </button>
+                <button
+                  onClick={handleImportExcel}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-sm"
+                  title="导入 Excel"
+                >
+                  <FileSpreadsheet size={14} />
+                  导入 Excel
+                </button>
+                <button
+                  onClick={handleExportExcel}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm"
+                  title="导出 Excel"
+                >
+                  <FileSpreadsheet size={14} />
+                  导出 Excel
                 </button>
               </>
             )}
@@ -732,13 +909,22 @@ export function SmartReportDesigner({
         </div>
 
         {!hideImportExport && (
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json,application/json"
-            onChange={handleFileChange}
-            className="hidden"
-          />
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+            <input
+              ref={excelFileInputRef}
+              type="file"
+              accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+              onChange={handleExcelFileChange}
+              className="hidden"
+            />
+          </>
         )}
 
         {/* Custom Right Panel Content */}
