@@ -52,7 +52,7 @@ import GC from '@grapecity/spread-sheets';
 import 'smart-report-designer/style.css';
 
 // 设置 SpreadJS 许可证（可选）
-setLicenseKey('your-license-key');
+setLicenseKey('your-spreadjs-license-key', 'your-designer-license-key');
 
 function App() {
   const initialComponents: SmartComponent[] = [
@@ -139,7 +139,8 @@ SpreadJS 是 GrapeCity 公司的商业软件产品，需要有效的许可证才
 ```tsx
 import { setLicenseKey } from 'smart-report-designer';
 
-setLicenseKey('your-spreadjs-license-key');
+// 设置 SpreadJS Sheets 和 Designer 许可证
+setLicenseKey('your-spreadjs-sheets-license-key', 'your-spreadjs-designer-license-key');
 ```
 
 ## 开发

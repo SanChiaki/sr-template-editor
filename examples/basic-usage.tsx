@@ -8,7 +8,7 @@ import GC from '@grapecity/spread-sheets';
 import 'smart-report-designer/style.css';
 
 // 设置 SpreadJS 许可证（如果有的话）
-// setLicenseKey('your-license-key');
+// setLicenseKey('your-spreadjs-sheets-license-key', 'your-spreadjs-designer-license-key');
 
 export default function Example() {
   // 可选：加载初始组件

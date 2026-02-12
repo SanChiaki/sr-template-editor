@@ -1,13 +1,13 @@
 import { useState, useRef, useCallback } from 'react';
 import GC from '@grapecity/spread-sheets';
-import { SmartReportDesigner } from './components/SmartReportDesigner';
+import { SmartReportDesigner, setLicenseKey } from './components/SmartReportDesigner';
 import { SmartComponent } from './types/SmartComponent';
 import { saveTemplate, loadTemplate } from './api/templateApi';
 import { Save, FolderOpen, Loader2 } from 'lucide-react';
 import './App.css';
 
 // Set license key if available
-// setLicenseKey('your-license-key');
+// setLicenseKey('your-spreadjs-sheets-license-key', 'your-spreadjs-designer-license-key');
 
 function App() {
   // Load saved components from localStorage

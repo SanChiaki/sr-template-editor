@@ -16,10 +16,9 @@ import { PropertiesPanel } from './PropertiesPanel';
 import { Download, Layers, Upload, FileSpreadsheet } from 'lucide-react';
 
 // License key - can be set from outside
-let licenseKey = '';
-export const setLicenseKey = (key: string) => {
-  licenseKey = key;
-  (GC.Spread.Sheets as any).LicenseKey = key;
+export const setLicenseKey = (sheetsLicenseKey: string, designerLicenseKey: string) => {
+  (GC.Spread.Sheets as any).LicenseKey = sheetsLicenseKey;
+  (GC.Spread.Sheets as any).Designer.LicenseKey = designerLicenseKey;
 };
 
 const colLetterToIndex = (letters: string): number => {
@@ -136,11 +135,6 @@ export function SmartReportDesigner({
   const updatingComponentRef = useRef<Set<string>>(new Set());
   const spreadRef = useRef<GC.Spread.Sheets.Workbook | null>(null);
   const componentsRef = useRef<SmartComponent[]>([]);
-
-  // Set license key on mount
-  useEffect(() => {
-    (GC.Spread.Sheets as any).LicenseKey = licenseKey;
-  }, []);
 
   // Sync refs with current state
   useEffect(() => {
