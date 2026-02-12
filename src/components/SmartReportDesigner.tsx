@@ -113,7 +113,7 @@ export function SmartReportDesigner({
   hideComponentLibrary = false,
   hideComponentList = false,
   hidePropertiesPanel = false,
-  hideImportExport = false,
+  hideImportExport = true,
   rightPanelWidth = 340,
   extraHeaderActions,
   onConflict,
