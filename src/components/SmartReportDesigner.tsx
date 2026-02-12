@@ -817,6 +817,56 @@ export function SmartReportDesigner({
     setSelectedId(null);
   }, [components, removeShape]);
 
+  // 加载外部组件（用于从后端恢复）
+  const loadComponents = useCallback((newComponents: SmartComponent[]) => {
+    // 1. 清除现有组件和 shapes
+    components.forEach(comp => removeShape(comp.id));
+    createdShapesRef.current.clear();
+
+    // 2. 设置新组件
+    setComponents(newComponents);
+    setSelectedId(null);
+
+    // 3. 延迟创建 shapes
+    setTimeout(() => {
+      newComponents.forEach((comp: SmartComponent) => {
+        createShape(comp);
+      });
+    }, 100);
+  }, [components, removeShape, createShape]);
+
+  // 导出干净的 Excel（不含 shapes）
+  const exportCleanExcel = useCallback(async (): Promise<Blob> => {
+    if (!spread) {
+      throw new Error('SpreadJS 尚未初始化');
+    }
+
+    return new Promise((resolve, reject) => {
+      // 1. 临时移除所有 shapes
+      const shapeData = clearAllShapes();
+
+      // 2. 导出 Excel
+      const excelIO = new (ExcelIO as any).IO();
+      const json = spread.toJSON();
+
+      excelIO.save(json, (blob: Blob) => {
+        // 3. 恢复 shapes
+        if (shapeData && shapeData.length > 0) {
+          setTimeout(() => {
+            restoreAllShapes(shapeData);
+          }, 50);
+        }
+        resolve(blob);
+      }, (error: any) => {
+        // 错误时也要恢复 shapes
+        if (shapeData && shapeData.length > 0) {
+          restoreAllShapes(shapeData);
+        }
+        reject(error);
+      });
+    });
+  }, [spread, clearAllShapes, restoreAllShapes]);
+
   // Expose methods via ref if needed
   useEffect(() => {
     // Expose to window for debugging (optional)
@@ -826,6 +876,8 @@ export function SmartReportDesigner({
       getDesigner,
       setSelectedComponent,
       clearComponents,
+      loadComponents,
+      exportCleanExcel,
       addComponent: (comp: Omit<SmartComponent, 'id'>) => {
         const newComp = { ...comp, id: uuidv4() };
         setComponents(prev => [...prev, newComp]);
@@ -835,7 +887,7 @@ export function SmartReportDesigner({
       exportExcel: handleExportExcel,
       importExcel: handleImportExcel,
     };
-  }, [getComponents, getSpread, getDesigner, createShape, clearComponents, handleExportExcel, handleImportExcel]);
+  }, [getComponents, getSpread, getDesigner, createShape, clearComponents, loadComponents, exportCleanExcel, handleExportExcel, handleImportExcel]);
 
   return (
     <div className={`flex h-screen w-screen overflow-hidden bg-gray-100 ${className}`} style={style}>

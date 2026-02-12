@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import GC from '@grapecity/spread-sheets';
 import { SmartReportDesigner, setLicenseKey } from './components/SmartReportDesigner';
 import { SmartComponent } from './types/SmartComponent';
@@ -14,8 +14,6 @@ function App() {
   const savedComponents = localStorage.getItem('smartreport_components');
   const initialComponents: SmartComponent[] = savedComponents ? JSON.parse(savedComponents) : [];
 
-  // 保存当前的 Excel Blob 引用
-  const currentExcelBlobRef = useRef<Blob | null>(null);
   // 当前的模板 ID（用于更新）
   const [currentTemplateId, setCurrentTemplateId] = useState<string | null>(null);
   // 加载/保存状态
@@ -31,27 +29,6 @@ function App() {
     console.log('[App] SpreadJS ready:', workbook, designer);
   };
 
-  // 导出 Excel 回调 - 保存 Blob 引用
-  const handleExportExcel = (blob: Blob) => {
-    console.log('[App] Excel exported:', blob);
-    currentExcelBlobRef.current = blob;
-  };
-
-  // 导入 Excel 回调 - 从外部系统获取组件配置
-  const handleImportExcel = async (file: File): Promise<SmartComponent[]> => {
-    console.log('[App] Excel imported:', file);
-    // 示例：从 localStorage 读取上次保存的组件配置
-    const saved = localStorage.getItem('smartreport_components');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  };
-
   // 保存到后端
   const handleSaveToBackend = useCallback(async () => {
     const designer = (window as any).smartReportDesigner;
@@ -62,26 +39,8 @@ function App() {
 
     setIsSaving(true);
     try {
-      // 1. 获取当前的 Excel Blob
-      let excelBlob = currentExcelBlobRef.current;
-
-      if (!excelBlob) {
-        // 如果没有缓存的 Blob，重新导出
-        excelBlob = await new Promise<Blob>((resolve, reject) => {
-          const spread = designer.getSpread();
-          if (!spread) {
-            reject(new Error('SpreadJS 尚未初始化'));
-            return;
-          }
-
-          // 动态导入 ExcelIO
-          import('@grapecity/spread-excelio').then((ExcelIO) => {
-            const excelIO = new (ExcelIO as any).IO();
-            const json = spread.toJSON();
-            excelIO.save(json, (blob: Blob) => resolve(blob), (error: any) => reject(error));
-          });
-        });
-      }
+      // 1. 使用 exportCleanExcel 导出不含 shapes 的 Excel
+      const excelBlob = await designer.exportCleanExcel();
 
       // 2. 获取当前的组件列表
       const components = designer.getComponents();
@@ -135,24 +94,24 @@ function App() {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
 
-      excelIO.open(file, (json: any) => {
-        spread.fromJSON(json);
-
-        // 3. 清除现有 shapes
-        designer.clearComponents();
-
-        // 4. 设置新组件
-        localStorage.setItem('smartreport_components', JSON.stringify(data.components));
-        setCurrentTemplateId(templateId);
-
-        // 5. 触发重新渲染（需要等待 SpreadJS 完成）
-        setTimeout(() => {
-          window.location.reload();
-        }, 100);
-      }, (error: any) => {
-        console.error('加载 Excel 失败:', error);
-        alert('加载 Excel 失败: ' + (error?.errorMessage || '未知错误'));
+      // 使用 Promise 包装 excelIO.open
+      await new Promise<void>((resolve, reject) => {
+        excelIO.open(file, (json: any) => {
+          spread.fromJSON(json);
+          resolve();
+        }, (error: any) => {
+          reject(error);
+        });
       });
+
+      // 3. 使用 loadComponents 加载组件（会自动创建 shapes）
+      designer.loadComponents(data.components);
+
+      // 4. 更新状态
+      localStorage.setItem('smartreport_components', JSON.stringify(data.components));
+      setCurrentTemplateId(templateId);
+
+      alert('加载成功！');
     } catch (error) {
       console.error('加载失败:', error);
       alert('加载失败: ' + (error instanceof Error ? error.message : '未知错误'));
@@ -195,8 +154,6 @@ function App() {
       initialComponents={initialComponents}
       onComponentsChange={handleComponentsChange}
       onSpreadReady={handleSpreadReady}
-      onExportExcel={handleExportExcel}
-      onImportExcel={handleImportExcel}
       extraHeaderActions={extraHeaderActions}
     />
   );
