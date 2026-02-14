@@ -17,7 +17,7 @@ import { Download, Layers, Upload, FileSpreadsheet } from 'lucide-react';
 
 // License key - can be set from outside
 export const setLicenseKey = (sheetsLicenseKey: string, designerLicenseKey: string) => {
-  (GC.Spread.Sheets as any).LicenseKey = sheetsLicenseKey;
+  (GC.Spread.Sheets as any).LicenseKey = (ExcelIO as any).LicenseKey = sheetsLicenseKey;
   (GC.Spread.Sheets as any).Designer.LicenseKey = designerLicenseKey;
 };
 
