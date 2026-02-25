@@ -842,6 +842,9 @@ export function SmartReportDesigner({
     }
 
     return new Promise((resolve, reject) => {
+      // 暂停 SpreadJS 事件，避免触发状态更新
+      spread.suspendEvent();
+
       // 1. 临时移除所有 shapes
       const shapeData = clearAllShapes();
 
@@ -849,14 +852,28 @@ export function SmartReportDesigner({
       const excelIO = new (ExcelIO as any).IO();
       const json = spread.toJSON();
 
-      excelIO.save(json, (blob: Blob) => {
-        // 3. 恢复 shapes
+      // 使用 Promise 包装 excelIO.save
+      const savePromise = new Promise<Blob>((res, rej) => {
+        excelIO.save(json, (blob: Blob) => {
+          res(blob);
+        }, (error: any) => {
+          rej(error);
+        });
+      });
+
+      // 恢复事件
+      spread.resumeEvent();
+
+      savePromise.then((blob: Blob) => {
+        // 3. 恢复 shapes 后再 resolve（确保 shapes 完全恢复后再继续执行保存逻辑）
         if (shapeData && shapeData.length > 0) {
           setTimeout(() => {
             restoreAllShapes(shapeData);
+            resolve(blob);
           }, 50);
+        } else {
+          resolve(blob);
         }
-        resolve(blob);
       }, (error: any) => {
         // 错误时也要恢复 shapes
         if (shapeData && shapeData.length > 0) {
