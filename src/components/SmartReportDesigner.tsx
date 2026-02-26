@@ -576,8 +576,8 @@ export function SmartReportDesigner({
     const config = {
       template_id: '',
       version: '',
-      component_list: components.map(({ id, location, type, prompt, name, style }) => ({
-        id, location, type, prompt, name, style
+      component_list: components.map(({ id, location, type, prompt, name, style, data_example, data_source }) => ({
+        id, location, type, prompt, name, style, data_example, data_source
       }))
     };
     onExport?.(config);
@@ -626,7 +626,9 @@ export function SmartReportDesigner({
           type: comp.type,
           prompt: comp.prompt || '',
           name: comp.name,
-          style: comp.style
+          style: comp.style,
+          data_example: comp.data_example,
+          data_source: comp.data_source
         }));
 
         setComponents(importedComponents);

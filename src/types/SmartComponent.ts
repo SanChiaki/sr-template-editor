@@ -1,5 +1,14 @@
 export type SmartComponentType = 'Text' | 'Table' | 'Chart' | 'List' | 'Milestone' | 'Gantt' | 'Image' | 'Formula';
 
+export interface DataSource {
+  /** 数据源名称 */
+  name: string;
+  /** 数据源入参，JSON格式 */
+  params: string;
+  /** 是否需要大模型后处理 */
+  needs_post_processing: boolean;
+}
+
 export interface SmartComponent {
   id: string;
   location: string;
@@ -12,6 +21,10 @@ export interface SmartComponent {
     borderColor?: string;
     textColor?: string;
   };
+  /** 数据示例，用于约束大模型输出格式 */
+  data_example?: string;
+  /** 数据源配置 */
+  data_source?: DataSource;
 }
 
 export const ComponentTypes: SmartComponentType[] = ['Text', 'Table', 'Chart', 'List', 'Milestone', 'Gantt'];

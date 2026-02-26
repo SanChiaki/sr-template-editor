@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { SmartComponent, ComponentTypes, DefaultColors } from '../types/SmartComponent';
-import { Trash2, MapPin, Type, FileText, Sparkles, AlertCircle } from 'lucide-react';
+import { SmartComponent, ComponentTypes, DefaultColors, DataSource } from '../types/SmartComponent';
+import { Trash2, MapPin, Type, FileText, Sparkles, AlertCircle, Database, ChevronDown, ChevronRight, Braces } from 'lucide-react';
 
 export interface PropertiesPanelProps {
   component: SmartComponent | null;
   onUpdate: (component: SmartComponent) => void;
   onDelete: (id: string) => void;
   conflictWarning?: string | null;
+  /** 可选的数据源列表，用于下拉选择 */
+  dataSourceOptions?: string[];
 }
 
 const TypeNames: Record<string, string> = {
@@ -21,12 +23,27 @@ const TypeNames: Record<string, string> = {
   Formula: '公式',
 };
 
-export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ component, onUpdate, onDelete, conflictWarning }) => {
+export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
+  component,
+  onUpdate,
+  onDelete,
+  conflictWarning,
+  dataSourceOptions = [],
+}) => {
   const [localPrompt, setLocalPrompt] = useState('');
+  const [localDataExample, setLocalDataExample] = useState('');
+  const [localDataSourceParams, setLocalDataSourceParams] = useState('');
+  const [showDataSource, setShowDataSource] = useState(false);
+  const [dataSourceNameInput, setDataSourceNameInput] = useState('');
+  const [showDataSourceSuggestions, setShowDataSourceSuggestions] = useState(false);
 
   useEffect(() => {
     if (component) {
       setLocalPrompt(component.prompt);
+      setLocalDataExample(component.data_example || '');
+      setLocalDataSourceParams(component.data_source?.params || '');
+      setShowDataSource(!!component.data_source);
+      setDataSourceNameInput(component.data_source?.name || '');
     }
   }, [component?.id]);
 
@@ -46,6 +63,58 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ component, onU
       onUpdate({ ...component, prompt: localPrompt });
     }
   };
+
+  const handleDataExampleBlur = () => {
+    if (localDataExample !== (component.data_example || '')) {
+      onUpdate({ ...component, data_example: localDataExample || undefined });
+    }
+  };
+
+  const handleDataSourceParamsBlur = () => {
+    if (localDataSourceParams !== (component.data_source?.params || '')) {
+      onUpdate({
+        ...component,
+        data_source: component.data_source ? { ...component.data_source, params: localDataSourceParams } : undefined,
+      });
+    }
+  };
+
+  const handleDataSourceNameChange = (name: string) => {
+    setDataSourceNameInput(name);
+    const needsPostProcessing = component.data_source?.needs_post_processing ?? true;
+    onUpdate({
+      ...component,
+      data_source: { name, params: localDataSourceParams, needs_post_processing: needsPostProcessing },
+    });
+  };
+
+  const handleDataSourceToggle = (enabled: boolean) => {
+    setShowDataSource(enabled);
+    if (enabled && !component.data_source) {
+      onUpdate({
+        ...component,
+        data_source: { name: '', params: '', needs_post_processing: true },
+      });
+      setDataSourceNameInput('');
+      setLocalDataSourceParams('');
+    } else if (!enabled) {
+      onUpdate({ ...component, data_source: undefined });
+    }
+  };
+
+  const handleNeedsPostProcessingChange = (checked: boolean) => {
+    if (component.data_source) {
+      onUpdate({
+        ...component,
+        data_source: { ...component.data_source, needs_post_processing: checked },
+      });
+    }
+  };
+
+  // 过滤数据源建议列表
+  const filteredSuggestions = dataSourceOptions.filter(opt =>
+    opt.toLowerCase().includes(dataSourceNameInput.toLowerCase())
+  );
 
   return (
     <div className="flex-1 flex flex-col bg-white overflow-hidden">
@@ -133,6 +202,119 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ component, onU
             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
             placeholder="描述AI应该生成的内容..."
           />
+        </div>
+
+        {/* 数据示例 */}
+        <div>
+          <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1.5">
+            <Braces size={12} />
+            数据示例
+          </label>
+          <textarea
+            value={localDataExample}
+            onChange={e => setLocalDataExample(e.target.value)}
+            onBlur={handleDataExampleBlur}
+            rows={3}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none font-mono"
+            placeholder="提供数据示例，用于约束大模型输出格式..."
+          />
+        </div>
+
+        {/* 数据源配置 */}
+        <div className="border border-gray-200 rounded-lg">
+          <button
+            onClick={() => handleDataSourceToggle(!showDataSource)}
+            className="w-full flex items-center justify-between p-3 text-left hover:bg-gray-50 transition-colors rounded-lg"
+          >
+            <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600">
+              <Database size={12} />
+              数据源配置
+            </label>
+            <div className="flex items-center gap-2">
+              <span className={`text-xs px-2 py-0.5 rounded-full ${showDataSource ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                {showDataSource ? '已启用' : '未启用'}
+              </span>
+              {showDataSource ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronRight size={16} className="text-gray-400" />}
+            </div>
+          </button>
+
+          {showDataSource && (
+            <div className="px-3 pb-3 pt-1 space-y-3 border-t border-gray-100">
+              {/* 数据源名称 */}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">数据源名称</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={dataSourceNameInput}
+                    onChange={e => {
+                      setDataSourceNameInput(e.target.value);
+                      setShowDataSourceSuggestions(true);
+                    }}
+                    onFocus={() => setShowDataSourceSuggestions(true)}
+                    onBlur={() => {
+                      // 延迟隐藏，允许点击建议项
+                      setTimeout(() => setShowDataSourceSuggestions(false), 200);
+                    }}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    placeholder="选择或输入数据源名称..."
+                  />
+                  {/* 下拉建议列表 */}
+                  {showDataSourceSuggestions && filteredSuggestions.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                      {filteredSuggestions.map(opt => (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() => {
+                            handleDataSourceNameChange(opt);
+                            setShowDataSourceSuggestions(false);
+                          }}
+                          className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 transition-colors"
+                        >
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 数据源入参 */}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">入参配置 (JSON)</label>
+                <textarea
+                  value={localDataSourceParams}
+                  onChange={e => setLocalDataSourceParams(e.target.value)}
+                  onBlur={handleDataSourceParamsBlur}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none font-mono"
+                  placeholder='{"key": "value"}'
+                />
+              </div>
+
+              {/* 是否需要后处理 */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600">大模型后处理</label>
+                  <span className="text-xs text-gray-400">关闭后数据源输出将直接使用</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleNeedsPostProcessingChange(!component.data_source?.needs_post_processing)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    component.data_source?.needs_post_processing ? 'bg-blue-500' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      component.data_source?.needs_post_processing ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

@@ -2,7 +2,7 @@
 import './index.css';
 
 // 类型导出
-export type { SmartComponent, SmartComponentType } from './types/SmartComponent';
+export type { SmartComponent, SmartComponentType, DataSource } from './types/SmartComponent';
 export { ComponentTypes, DefaultColors } from './types/SmartComponent';
 
 // 组件导出
