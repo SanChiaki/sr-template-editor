@@ -3,8 +3,8 @@ export type SmartComponentType = 'Text' | 'Table' | 'Chart' | 'List' | 'Mileston
 export interface DataSource {
   /** 数据源名称 */
   name: string;
-  /** 数据源入参，JSON格式 */
-  params: string;
+  /** 数据源入参，JSON对象格式 */
+  params: Record<string, unknown>;
   /** 是否需要大模型后处理 */
   needs_post_processing: boolean;
 }

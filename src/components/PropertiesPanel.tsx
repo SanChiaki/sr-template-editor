@@ -1,6 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { SmartComponent, ComponentTypes, DefaultColors, DataSource } from '../types/SmartComponent';
-import { Trash2, MapPin, Type, FileText, Sparkles, AlertCircle, Database, ChevronDown, ChevronRight, Braces } from 'lucide-react';
+import { Trash2, MapPin, Type, FileText, Sparkles, AlertCircle, Database, ChevronDown, ChevronRight, Braces, AlertTriangle } from 'lucide-react';
+
+// JSON 校验函数
+const isValidJson = (str: string): boolean => {
+  if (!str || str.trim() === '') return true; // 空字符串视为有效
+  try {
+    const parsed = JSON.parse(str);
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed);
+  } catch {
+    return false;
+  }
+};
+
+// JSON对象转字符串（用于显示）
+const paramsToString = (params: Record<string, unknown> | undefined): string => {
+  if (!params || Object.keys(params).length === 0) return '';
+  return JSON.stringify(params, null, 2);
+};
+
+// 字符串转JSON对象（用于保存）
+const stringToParams = (str: string): Record<string, unknown> => {
+  if (!str || str.trim() === '') return {};
+  try {
+    return JSON.parse(str);
+  } catch {
+    return {};
+  }
+};
 
 export interface PropertiesPanelProps {
   component: SmartComponent | null;
@@ -37,11 +64,14 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   const [dataSourceNameInput, setDataSourceNameInput] = useState('');
   const [showDataSourceSuggestions, setShowDataSourceSuggestions] = useState(false);
 
+  // 校验数据源入参 JSON 格式 - 必须在条件返回之前调用
+  const isDataSourceParamsValidJson = useMemo(() => isValidJson(localDataSourceParams), [localDataSourceParams]);
+
   useEffect(() => {
     if (component) {
       setLocalPrompt(component.prompt);
       setLocalDataExample(component.data_example || '');
-      setLocalDataSourceParams(component.data_source?.params || '');
+      setLocalDataSourceParams(paramsToString(component.data_source?.params));
       setShowDataSource(!!component.data_source);
       setDataSourceNameInput(component.data_source?.name || '');
     }
@@ -71,10 +101,14 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   };
 
   const handleDataSourceParamsBlur = () => {
-    if (localDataSourceParams !== (component.data_source?.params || '')) {
+    const currentParamsStr = paramsToString(component.data_source?.params);
+    if (localDataSourceParams !== currentParamsStr) {
+      const newParams = stringToParams(localDataSourceParams);
       onUpdate({
         ...component,
-        data_source: component.data_source ? { ...component.data_source, params: localDataSourceParams } : undefined,
+        data_source: component.data_source
+          ? { ...component.data_source, params: newParams }
+          : undefined,
       });
     }
   };
@@ -82,9 +116,10 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   const handleDataSourceNameChange = (name: string) => {
     setDataSourceNameInput(name);
     const needsPostProcessing = component.data_source?.needs_post_processing ?? true;
+    const currentParams = component.data_source?.params || {};
     onUpdate({
       ...component,
-      data_source: { name, params: localDataSourceParams, needs_post_processing: needsPostProcessing },
+      data_source: { name, params: currentParams, needs_post_processing: needsPostProcessing },
     });
   };
 
@@ -93,7 +128,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
     if (enabled && !component.data_source) {
       onUpdate({
         ...component,
-        data_source: { name: '', params: '', needs_post_processing: true },
+        data_source: { name: '', params: {}, needs_post_processing: true },
       });
       setDataSourceNameInput('');
       setLocalDataSourceParams('');
@@ -282,13 +317,27 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
               {/* 数据源入参 */}
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">入参配置 (JSON)</label>
+                <label className="flex items-center gap-1.5 text-xs font-medium text-gray-500 mb-1">
+                  入参配置 (JSON)
+                  {!isDataSourceParamsValidJson && (
+                    <div className="relative group">
+                      <AlertTriangle size={12} className="text-amber-500 cursor-help" />
+                      <div className="absolute left-0 top-full mt-1 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-none">
+                        非JSON格式
+                      </div>
+                    </div>
+                  )}
+                </label>
                 <textarea
                   value={localDataSourceParams}
                   onChange={e => setLocalDataSourceParams(e.target.value)}
                   onBlur={handleDataSourceParamsBlur}
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none font-mono"
+                  className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-all resize-none font-mono ${
+                    !isDataSourceParamsValidJson
+                      ? 'border-red-400 animate-pulse ring-2 ring-red-200 focus:ring-red-300'
+                      : 'border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+                  }`}
                   placeholder='{"key": "value"}'
                 />
               </div>
