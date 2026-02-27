@@ -255,7 +255,7 @@ export function SmartReportDesigner({
       };
       style.textEffect = { color: borderColor, font: '12px Arial' };
       shape.style(style);
-      shape.text(component.name);
+      shape.text(component.semantic_description);
       shape.allowMove(true);
       shape.allowResize(true);
 
@@ -347,17 +347,35 @@ export function SmartReportDesigner({
         const newLocation = rangeToLocation(snapped.row, snapped.col, snapped.rowCount, snapped.colCount);
 
         const comp = componentMapRef.current.get(shapeId);
-        if (comp && comp.location !== newLocation) {
-          const hasConflict = checkConflict(snapped, shapeId);
-          if (hasConflict) {
-            const msg = '区域与现有组件冲突';
-            setConflictWarning(msg);
-            onConflict?.(msg);
-            setTimeout(() => setConflictWarning(null), 3000);
+        if (comp) {
+          const updates: Partial<SmartComponent> = {};
+          let hasChanges = false;
+
+          // 位置变化
+          if (comp.location !== newLocation) {
+            const hasConflict = checkConflict(snapped, shapeId);
+            if (hasConflict) {
+              const msg = '区域与现有组件冲突';
+              setConflictWarning(msg);
+              onConflict?.(msg);
+              setTimeout(() => setConflictWarning(null), 3000);
+            }
+            updates.location = newLocation;
+            hasChanges = true;
           }
 
-          setComponents(prev => prev.map(c => c.id === shapeId ? { ...c, location: newLocation } : c));
-          componentMapRef.current.set(shapeId, { ...comp, location: newLocation });
+          // 文字变化
+          const newText = args.shape.text();
+          if (newText !== comp.semantic_description) {
+            updates.semantic_description = newText;
+            hasChanges = true;
+          }
+
+          if (hasChanges) {
+            const updatedComp = { ...comp, ...updates };
+            setComponents(prev => prev.map(c => c.id === shapeId ? updatedComp : c));
+            componentMapRef.current.set(shapeId, updatedComp);
+          }
         }
       } catch (e) {
         console.error('[ShapeChanged] 错误:', e);
@@ -528,7 +546,7 @@ export function SmartReportDesigner({
       location,
       type: componentType as SmartComponent['type'],
       prompt: '',
-      name: `${TypeNames[componentType] || componentType} ${components.length + 1}`,
+      semantic_description: `${TypeNames[componentType] || componentType} ${components.length + 1}`,
     };
 
     setComponents(prev => [...prev, newComp]);
@@ -576,8 +594,8 @@ export function SmartReportDesigner({
     const config = {
       template_id: '',
       version: '',
-      component_list: components.map(({ id, location, type, prompt, name, style, data_example, data_source }) => ({
-        id, location, type, prompt, name, style, data_example, data_source
+      component_list: components.map(({ id, location, type, prompt, semantic_description, style, data_example, data_source }) => ({
+        id, location, type, prompt, semantic_description, style, data_example, data_source
       }))
     };
     onExport?.(config);
@@ -620,12 +638,12 @@ export function SmartReportDesigner({
         createdShapesRef.current.clear();
 
         // 设置新组件
-        const importedComponents: SmartComponent[] = config.component_list.map((comp: SmartComponent) => ({
+        const importedComponents: SmartComponent[] = config.component_list.map((comp: SmartComponent & { name?: string }) => ({
           id: comp.id || uuidv4(),
           location: comp.location,
           type: comp.type,
           prompt: comp.prompt || '',
-          name: comp.name,
+          semantic_description: comp.semantic_description || comp.name || '',
           style: comp.style,
           data_example: comp.data_example,
           data_source: comp.data_source

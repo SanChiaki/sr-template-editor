@@ -73,7 +73,7 @@ export const ComponentPanel: React.FC<Props> = ({
                       className="w-3 h-3 rounded-full"
                       style={{ backgroundColor: DefaultColors[comp.type].border }}
                     />
-                    <span className="font-medium text-sm">{comp.name}</span>
+                    <span className="font-medium text-sm">{comp.semantic_description}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
@@ -116,8 +116,8 @@ export const ComponentPanel: React.FC<Props> = ({
               <label className="block text-xs font-medium text-gray-600 mb-1">Name</label>
               <input
                 type="text"
-                value={selected.name}
-                onChange={e => onUpdate({ ...selected, name: e.target.value })}
+                value={selected.semantic_description}
+                onChange={e => onUpdate({ ...selected, semantic_description: e.target.value })}
                 className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>

@@ -176,8 +176,8 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
           </label>
           <input
             type="text"
-            value={component.name}
-            onChange={e => onUpdate({ ...component, name: e.target.value })}
+            value={component.semantic_description}
+            onChange={e => onUpdate({ ...component, semantic_description: e.target.value })}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
           />
         </div>

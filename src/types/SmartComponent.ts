@@ -14,7 +14,8 @@ export interface SmartComponent {
   location: string;
   type: SmartComponentType;
   prompt: string;
-  name: string;
+  /** 语义描述，UI显示为"名称" */
+  semantic_description: string;
   shapeId?: string;
   style?: {
     backgroundColor?: string;

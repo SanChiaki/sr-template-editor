@@ -74,7 +74,7 @@ export const ComponentList: React.FC<ComponentListProps> = ({ components, select
               {ComponentIcons[comp.type] || <span>?</span>}
             </span>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-gray-700 truncate">{comp.name}</div>
+              <div className="text-sm font-medium text-gray-700 truncate">{comp.semantic_description}</div>
               <div className="text-xs text-gray-400 font-mono">{comp.location}</div>
             </div>
             <span
