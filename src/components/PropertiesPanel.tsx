@@ -29,12 +29,19 @@ const stringToParams = (str: string): Record<string, unknown> => {
   }
 };
 
+// 默认数据源列表
+const DEFAULT_DATA_SOURCE_OPTIONS = [
+  'general_project_delivery_plan',
+  'url_tool',
+  'ht_mcd_issues',
+];
+
 export interface PropertiesPanelProps {
   component: SmartComponent | null;
   onUpdate: (component: SmartComponent) => void;
   onDelete: (id: string) => void;
   conflictWarning?: string | null;
-  /** 可选的数据源列表，用于下拉选择 */
+  /** 可选的数据源列表，用于下拉选择，默认使用内置列表 */
   dataSourceOptions?: string[];
 }
 
@@ -55,7 +62,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   onUpdate,
   onDelete,
   conflictWarning,
-  dataSourceOptions = [],
+  dataSourceOptions = DEFAULT_DATA_SOURCE_OPTIONS,
 }) => {
   const [localPrompt, setLocalPrompt] = useState('');
   const [localDataExample, setLocalDataExample] = useState('');
@@ -147,9 +154,9 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   };
 
   // 过滤数据源建议列表
-  const filteredSuggestions = dataSourceOptions.filter(opt =>
-    opt.toLowerCase().includes(dataSourceNameInput.toLowerCase())
-  );
+  const filteredSuggestions = dataSourceNameInput
+    ? dataSourceOptions.filter(opt => opt.toLowerCase().includes(dataSourceNameInput.toLowerCase()))
+    : dataSourceOptions;
 
   return (
     <div className="flex-1 flex flex-col bg-white overflow-hidden">
