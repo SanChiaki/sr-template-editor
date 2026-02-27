@@ -44,7 +44,7 @@ const TypeNames: Record<string, string> = {
   Chart: '图表',
   List: '列表',
   Milestone: '里程碑',
-  Gantt: '甘特表',
+  GanttChart: '甘特表',
   // 兼容旧类型
   Image: '图片',
   Formula: '公式',

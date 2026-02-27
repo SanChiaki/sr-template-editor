@@ -14,10 +14,11 @@ const ComponentIcons: Record<string, React.ReactNode> = {
   Chart: <BarChart3 size={14} />,
   List: <List size={14} />,
   Milestone: <Flag size={14} />,
-  Gantt: <Calendar size={14} />,
+  GanttChart: <Calendar size={14} />,
   // 兼容旧类型
   Image: <ImageIcon size={14} />,
   Formula: <Calculator size={14} />,
+  Gantt: <Calendar size={14} />,
 };
 
 // 默认颜色（用于兼容旧类型）

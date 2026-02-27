@@ -13,10 +13,11 @@ const ComponentIcons: Record<string, React.ReactNode> = {
   Chart: <BarChart3 size={20} />,
   List: <List size={20} />,
   Milestone: <Flag size={20} />,
-  Gantt: <Calendar size={20} />,
+  GanttChart: <Calendar size={20} />,
   // 兼容旧类型
   Image: <ImageIcon size={20} />,
   Formula: <Calculator size={20} />,
+  Gantt: <Calendar size={20} />,
 };
 
 const TypeNames: Record<string, string> = {
@@ -25,10 +26,11 @@ const TypeNames: Record<string, string> = {
   Chart: '图表',
   List: '列表',
   Milestone: '里程碑',
-  Gantt: '甘特表',
+  GanttChart: '甘特表',
   // 兼容旧类型
   Image: '图片',
   Formula: '公式',
+  Gantt: '甘特表',
 };
 
 const DefaultSizes: Record<string, string> = {
@@ -37,10 +39,11 @@ const DefaultSizes: Record<string, string> = {
   Chart: '4x3',
   List: '3x4',
   Milestone: '2x2',
-  Gantt: '4x6',
+  GanttChart: '4x6',
   // 兼容旧类型
   Image: '3x3',
   Formula: '2x1',
+  Gantt: '4x6',
 };
 
 export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({ onDragStart, onDragEnd }) => {

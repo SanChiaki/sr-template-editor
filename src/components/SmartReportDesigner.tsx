@@ -46,9 +46,10 @@ const DefaultSizeMap: Record<string, { rows: number; cols: number }> = {
   Chart: { rows: 3, cols: 4 },
   List: { rows: 4, cols: 3 },
   Milestone: { rows: 2, cols: 2 },
-  Gantt: { rows: 4, cols: 6 },
+  GanttChart: { rows: 4, cols: 6 },
   Image: { rows: 3, cols: 3 },
   Formula: { rows: 1, cols: 2 },
+  Gantt: { rows: 4, cols: 6 },
 };
 
 const TypeNames: Record<string, string> = {
@@ -57,9 +58,10 @@ const TypeNames: Record<string, string> = {
   Chart: '图表',
   List: '列表',
   Milestone: '里程碑',
-  Gantt: '甘特表',
+  GanttChart: '甘特表',
   Image: '图片',
   Formula: '公式',
+  Gantt: '甘特表',
 };
 
 export interface SmartReportDesignerProps {
