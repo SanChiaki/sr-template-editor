@@ -21,6 +21,7 @@ GC.Spread.Common.CultureManager.culture('zh-cn');
 
 export interface SpreadDesignerProps {
   onWorkbookReady?: (workbook: GC.Spread.Sheets.Workbook, designer: any) => void;
+  onFileLoaded?: () => void;
   styleInfo?: React.CSSProperties;
 }
 
@@ -31,6 +32,20 @@ export class SpreadDesigner extends Component<SpreadDesignerProps> {
     this.designer = designer;
     const workbook = designer.getWorkbook();
     console.log('Designer initialized:', workbook);
+
+    // 监听 Designer.FileLoaded 事件
+    if ((GC.Spread.Sheets as any).Designer?.Events?.FileLoaded) {
+      const fileLoadedEvent = (GC.Spread.Sheets as any).Designer.Events.FileLoaded;
+      try {
+        designer.bind(fileLoadedEvent, () => {
+          if (this.props.onFileLoaded) {
+            this.props.onFileLoaded();
+          }
+        });
+      } catch (e) {
+        console.error('绑定 FileLoaded 事件失败:', e);
+      }
+    }
 
     if (this.props.onWorkbookReady) {
       this.props.onWorkbookReady(workbook, designer);

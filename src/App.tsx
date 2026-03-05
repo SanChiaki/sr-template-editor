@@ -98,7 +98,12 @@ function App() {
       await new Promise<void>((resolve, reject) => {
         excelIO.open(file, (json: any) => {
           spread.fromJSON(json);
-          resolve();
+
+          // 等待 SpreadJS 完成初始化后重新绑定事件
+          setTimeout(() => {
+            designer.rebindEvents();
+            resolve();
+          }, 100);
         }, (error: any) => {
           reject(error);
         });

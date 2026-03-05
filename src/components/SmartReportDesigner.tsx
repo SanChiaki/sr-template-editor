@@ -332,13 +332,8 @@ export function SmartReportDesigner({
     selectedIdRef.current = selectedId;
   }, [selectedId]);
 
-  // Bind events to sheet
-  useEffect(() => {
-    if (!spread) return;
-
-    const sheet = spread.getActiveSheet();
-    if (!sheet) return;
-
+  // 事件处理器定义（提取为独立函数以便复用）
+  const createEventHandlers = useCallback(() => {
     const handleShapeChanged = (_: unknown, args: { shape: GC.Spread.Sheets.Shapes.Shape }) => {
       if (!args.shape) return;
       const shapeId = args.shape.name();
@@ -385,6 +380,10 @@ export function SmartReportDesigner({
     };
 
     const handleShapeRemoved = () => {
+      if (!spreadRef.current) return;
+      const sheet = spreadRef.current.getActiveSheet();
+      if (!sheet) return;
+
       const allShapes = sheet.shapes.all();
       const currentShapeIds = new Set(allShapes.map((s: GC.Spread.Sheets.Shapes.Shape) => s.name()));
 
@@ -400,6 +399,10 @@ export function SmartReportDesigner({
 
     const handleShapeSelectionChanged = (_: unknown, args: { shape?: GC.Spread.Sheets.Shapes.Shape }) => {
       if (isInternalSelectionRef.current) return;
+
+      if (!spreadRef.current) return;
+      const sheet = spreadRef.current.getActiveSheet();
+      if (!sheet) return;
 
       const allShapes = sheet.shapes.all();
       const currentShapeIds = new Set(allShapes.map((s: GC.Spread.Sheets.Shapes.Shape) => s.name()));
@@ -421,8 +424,7 @@ export function SmartReportDesigner({
       }
 
       if (args.shape) {
-        const shape = args.shape;
-        const shapeId = shape.name();
+        const shapeId = args.shape.name();
         if (componentMapRef.current.has(shapeId) && shapesRef.current.has(shapeId)) {
           setSelectedId(shapeId);
         }
@@ -433,21 +435,74 @@ export function SmartReportDesigner({
       }
     };
 
+    return { handleShapeChanged, handleShapeRemoved, handleShapeSelectionChanged };
+  }, [snapToCell, rangeToLocation, checkConflict, onConflict]);
+
+  // 绑定事件到 sheet
+  const bindSheetEvents = useCallback(() => {
+    if (!spreadRef.current) return;
+
+    const sheet = spreadRef.current.getActiveSheet();
+    if (!sheet) return;
+
+    const handlers = createEventHandlers();
+
     try {
-      sheet.bind(GC.Spread.Sheets.Events.ShapeChanged, handleShapeChanged);
-      sheet.bind(GC.Spread.Sheets.Events.ShapeRemoved, handleShapeRemoved);
-      sheet.bind(GC.Spread.Sheets.Events.ShapeSelectionChanged, handleShapeSelectionChanged);
+      // 先解绑旧的事件（避免重复绑定）
+      sheet.unbind(GC.Spread.Sheets.Events.ShapeChanged);
+      sheet.unbind(GC.Spread.Sheets.Events.ShapeRemoved);
+      sheet.unbind(GC.Spread.Sheets.Events.ShapeSelectionChanged);
+
+      // 绑定新的事件
+      sheet.bind(GC.Spread.Sheets.Events.ShapeChanged, handlers.handleShapeChanged);
+      sheet.bind(GC.Spread.Sheets.Events.ShapeRemoved, handlers.handleShapeRemoved);
+      sheet.bind(GC.Spread.Sheets.Events.ShapeSelectionChanged, handlers.handleShapeSelectionChanged);
     } catch (e) {
       console.error('[EventBinding] 绑定事件失败:', e);
     }
 
     return () => {
       try {
-        sheet.unbind(GC.Spread.Sheets.Events.ShapeChanged, handleShapeChanged);
-        sheet.unbind(GC.Spread.Sheets.Events.ShapeRemoved, handleShapeRemoved);
-        sheet.unbind(GC.Spread.Sheets.Events.ShapeSelectionChanged, handleShapeSelectionChanged);
+        sheet.unbind(GC.Spread.Sheets.Events.ShapeChanged, handlers.handleShapeChanged);
+        sheet.unbind(GC.Spread.Sheets.Events.ShapeRemoved, handlers.handleShapeRemoved);
+        sheet.unbind(GC.Spread.Sheets.Events.ShapeSelectionChanged, handlers.handleShapeSelectionChanged);
       } catch {}
     };
+  }, [createEventHandlers]);
+
+  // 处理 Designer 的文件加载完成事件
+  const handleFileLoaded = useCallback(() => {
+    // 更新 spreadRef
+    if (spread) {
+      spreadRef.current = spread;
+    }
+
+    // 清除旧的 shape 引用（因为 Excel 已经被替换）
+    shapesRef.current.clear();
+    createdShapesRef.current.clear();
+
+    // 延迟重新绑定事件并重新创建 shapes
+    setTimeout(() => {
+      bindSheetEvents();
+
+      // 重新创建所有组件的 shapes
+      const currentComponents = componentsRef.current;
+      if (currentComponents.length > 0) {
+        currentComponents.forEach((comp: SmartComponent) => {
+          createShape(comp);
+        });
+      }
+    }, 200);
+  }, [spread, bindSheetEvents, createShape]);
+
+  // Bind events to sheet
+  useEffect(() => {
+    if (!spread) return;
+
+    // 初始绑定
+    const cleanup = bindSheetEvents();
+
+    return cleanup;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spread]);
 
@@ -497,6 +552,10 @@ export function SmartReportDesigner({
     if (!componentType) return;
 
     const sheet = spread.getActiveSheet();
+    if (!sheet) {
+      console.error('无法获取活动 sheet');
+      return;
+    }
 
     const designerHost =
       document.querySelector('.designer') ||
@@ -678,7 +737,7 @@ export function SmartReportDesigner({
 
     // 临时保存 shapes 以便后续恢复
     const shapeData: { id: string; component: SmartComponent }[] = [];
-    shapesRef.current.forEach((shape, id) => {
+    shapesRef.current.forEach((_, id) => {
       const comp = componentMapRef.current.get(id);
       if (comp) {
         shapeData.push({ id, component: comp });
@@ -786,8 +845,11 @@ export function SmartReportDesigner({
         componentMapRef.current.clear();
         createdShapesRef.current.clear();
 
-        // 加载 JSON 到 workbook
+        // 加载 JSON 到 workbook（会触发 ActiveSheetChanged 事件）
         spread.fromJSON(json);
+
+        // 更新 spreadRef（确保指向最新的 spread）
+        spreadRef.current = spread;
 
         // 2. 获取导入的组件列表（通过回调）
         let importedComponents: SmartComponent[] = [];
@@ -804,13 +866,13 @@ export function SmartReportDesigner({
         setComponents(importedComponents);
         setSelectedId(null);
 
-        // 4. 根据组件渲染 shapes
+        // 4. 根据组件渲染 shapes（等待 ActiveSheetChanged 事件触发后）
         if (importedComponents.length > 0) {
           setTimeout(() => {
             importedComponents.forEach((comp: SmartComponent) => {
               createShape(comp);
             });
-          }, 100);
+          }, 200);
         }
       }, (error: any) => {
         console.error('加载 Excel 失败:', error);
@@ -822,7 +884,7 @@ export function SmartReportDesigner({
     }
 
     e.target.value = '';
-  }, [spread, createShape, removeShape, onImportExcel]);
+  }, [spread, createShape, removeShape, onImportExcel, bindSheetEvents]);
 
   const selectedComponent = useMemo(() => {
     return components.find(c => c.id === selectedId) || null;
@@ -845,17 +907,22 @@ export function SmartReportDesigner({
     components.forEach(comp => removeShape(comp.id));
     createdShapesRef.current.clear();
 
-    // 2. 设置新组件
+    // 2. 更新 spreadRef（确保指向最新的 spread）
+    if (spread) {
+      spreadRef.current = spread;
+    }
+
+    // 3. 设置新组件
     setComponents(newComponents);
     setSelectedId(null);
 
-    // 3. 延迟创建 shapes
+    // 4. 延迟创建 shapes（等待 ActiveSheetChanged 事件触发后再创建）
     setTimeout(() => {
       newComponents.forEach((comp: SmartComponent) => {
         createShape(comp);
       });
-    }, 100);
-  }, [components, removeShape, createShape]);
+    }, 200);
+  }, [components, removeShape, createShape, spread]);
 
   // 导出干净的 Excel（不含 shapes）
   const exportCleanExcel = useCallback(async (): Promise<Blob> => {
@@ -917,6 +984,12 @@ export function SmartReportDesigner({
       clearComponents,
       loadComponents,
       exportCleanExcel,
+      rebindEvents: () => {
+        if (spread) {
+          spreadRef.current = spread;
+        }
+        bindSheetEvents();
+      },
       addComponent: (comp: Omit<SmartComponent, 'id'>) => {
         const newComp = { ...comp, id: uuidv4() };
         setComponents(prev => [...prev, newComp]);
@@ -925,8 +998,32 @@ export function SmartReportDesigner({
       },
       exportExcel: handleExportExcel,
       importExcel: handleImportExcel,
+      // 调试方法
+      debug: () => {
+        console.log('[DEBUG] 当前状态:', {
+          spread: !!spread,
+          spreadRef: !!spreadRef.current,
+          activeSheet: spread ? !!spread.getActiveSheet() : null,
+          components: components.length,
+          shapesRefSize: shapesRef.current.size,
+          componentMapSize: componentMapRef.current.size,
+          createdShapesSize: createdShapesRef.current.size,
+          selectedId,
+        });
+        if (spread) {
+          const sheet = spread.getActiveSheet();
+          if (sheet) {
+            console.log('[DEBUG] Sheet 信息:', {
+              name: sheet.name(),
+              rowCount: sheet.getRowCount(),
+              colCount: sheet.getColumnCount(),
+              shapesCount: sheet.shapes.all().length,
+            });
+          }
+        }
+      },
     };
-  }, [getComponents, getSpread, getDesigner, createShape, clearComponents, loadComponents, exportCleanExcel, handleExportExcel, handleImportExcel]);
+  }, [getComponents, getSpread, getDesigner, createShape, clearComponents, loadComponents, exportCleanExcel, handleExportExcel, handleImportExcel, spread, components, selectedId, bindSheetEvents]);
 
   return (
     <div className={`flex h-screen w-screen overflow-hidden bg-gray-100 ${className}`} style={style}>
@@ -934,6 +1031,7 @@ export function SmartReportDesigner({
       <div className="flex-1 flex flex-col relative">
         <SpreadDesigner
           onWorkbookReady={handleWorkbookReady}
+          onFileLoaded={handleFileLoaded}
           styleInfo={{ height: '100%', width: '100%' }}
         />
         {/* Drop zone overlay */}
