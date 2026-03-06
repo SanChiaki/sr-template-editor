@@ -137,6 +137,8 @@ export function SmartReportDesigner({
   const updatingComponentRef = useRef<Set<string>>(new Set());
   const spreadRef = useRef<GC.Spread.Sheets.Workbook | null>(null);
   const componentsRef = useRef<SmartComponent[]>([]);
+  const syncingShapeRef = useRef(false);
+  const lastSelectionRef = useRef<{ sheetName: string; range: { row: number; col: number; rowCount: number; colCount: number } } | null>(null);
 
   // Sync refs with current state
   useEffect(() => {
@@ -165,7 +167,7 @@ export function SmartReportDesigner({
     onSpreadReady?.(workbook, designer);
   }, [onSpreadReady]);
 
-  const parseRange = (location: string): { row: number; col: number; rowCount: number; colCount: number } | null => {
+  const parseRange = useCallback((location: string): { row: number; col: number; rowCount: number; colCount: number } | null => {
     try {
       const match = location.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i);
       if (!match) {
@@ -183,26 +185,34 @@ export function SmartReportDesigner({
       const endRow = parseInt(match[4]) - 1;
       return { row: startRow, col: startCol, rowCount: endRow - startRow + 1, colCount: endCol - startCol + 1 };
     } catch { return null; }
-  };
+  }, []);
 
-  const rangeToLocation = (row: number, col: number, rowCount: number, colCount: number): string => {
+  const rangeToLocation = useCallback((row: number, col: number, rowCount: number, colCount: number): string => {
     const startCol = colIndexToLetter(col);
     const endCol = colIndexToLetter(col + colCount - 1);
     return `${startCol}${row + 1}:${endCol}${row + rowCount}`;
-  };
+  }, []);
 
-  const getSelectionRange = (): { row: number; col: number; rowCount: number; colCount: number } | null => {
+  const normalizeSelectionRange = useCallback((selection: GC.Spread.Sheets.Range | null | undefined) => {
+    if (!selection) return null;
+    if (selection.rowCount <= 0 || selection.colCount <= 0) return null;
+    return { row: selection.row, col: selection.col, rowCount: selection.rowCount, colCount: selection.colCount };
+  }, []);
+
+  const isDefaultSelectionRange = useCallback((range: { row: number; col: number; rowCount: number; colCount: number } | null | undefined) => {
+    return !!range && range.row === 0 && range.col === 0 && range.rowCount === 1 && range.colCount === 1;
+  }, []);
+
+  const getSelectionRange = useCallback((): { row: number; col: number; rowCount: number; colCount: number } | null => {
     if (!spread) return null;
     try {
       const sheet = spread.getActiveSheet();
       if (!sheet) return null;
       const selections = sheet.getSelections();
       if (!selections || selections.length === 0) return null;
-      const sel = selections[0];
-      if (!sel || sel.rowCount <= 0 || sel.colCount <= 0) return null;
-      return { row: sel.row, col: sel.col, rowCount: sel.rowCount, colCount: sel.colCount };
+      return normalizeSelectionRange(selections[0]);
     } catch { return null; }
-  };
+  }, [spread, normalizeSelectionRange]);
 
   const checkConflict = useCallback((newRange: { row: number; col: number; rowCount: number; colCount: number }, excludeId?: string): boolean => {
     for (const comp of componentsRef.current) {
@@ -218,7 +228,110 @@ export function SmartReportDesigner({
       if (overlap) return true;
     }
     return false;
+  }, [parseRange]);
+
+  const syncShapeToRange = useCallback((
+    shape: GC.Spread.Sheets.Shapes.Shape,
+    range: { row: number; col: number; rowCount: number; colCount: number },
+    sheetArg?: GC.Spread.Sheets.Worksheet | null
+  ) => {
+    const sheet = sheetArg ?? spreadRef.current?.getActiveSheet();
+    if (!sheet) return;
+    const endRow = range.row + range.rowCount;
+    const endCol = range.col + range.colCount;
+
+    syncingShapeRef.current = true;
+    try {
+      shape.startRow(range.row);
+      shape.startColumn(range.col);
+      shape.startRowOffset(0);
+      shape.startColumnOffset(0);
+      shape.endRow(endRow);
+      shape.endColumn(endCol);
+      shape.endRowOffset(0);
+      shape.endColumnOffset(0);
+      shape.dynamicMove(true);
+      shape.dynamicSize(true);
+    } finally {
+      window.setTimeout(() => {
+        syncingShapeRef.current = false;
+      }, 0);
+    }
   }, []);
+
+  const getSheetZoom = useCallback((sheet: GC.Spread.Sheets.Worksheet | null | undefined): number => {
+    if (!sheet) return 1;
+    const zoom = Number(sheet.zoom());
+    return Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  }, []);
+
+  const getAxisPosition = useCallback((
+    sheet: GC.Spread.Sheets.Worksheet,
+    axis: 'row' | 'col',
+    index: number,
+    offset: number
+  ): number => {
+    const safeIndex = Math.max(0, index);
+    let position = Number.isFinite(offset) ? offset : 0;
+
+    for (let i = 0; i < safeIndex; i++) {
+      position += axis === 'row' ? sheet.getRowHeight(i) : sheet.getColumnWidth(i);
+    }
+
+    return Math.max(0, position);
+  }, []);
+
+  const snapPositionToLineIndex = useCallback((
+    sheet: GC.Spread.Sheets.Worksheet,
+    axis: 'row' | 'col',
+    position: number
+  ): number => {
+    const count = axis === 'row' ? sheet.getRowCount() : sheet.getColumnCount();
+    if (count <= 0) return 0;
+    if (position <= 0) return 0;
+
+    let acc = 0;
+    for (let i = 0; i < count; i++) {
+      const size = axis === 'row' ? sheet.getRowHeight(i) : sheet.getColumnWidth(i);
+      const next = acc + size;
+      if (position <= next) {
+        return position - acc <= next - position ? i : i + 1;
+      }
+      acc = next;
+    }
+
+    return count;
+  }, []);
+
+  const snapShapeToRange = useCallback((shape: GC.Spread.Sheets.Shapes.Shape) => {
+    const sheet = spreadRef.current?.getActiveSheet();
+    if (!sheet) return { row: 0, col: 0, rowCount: 1, colCount: 1 };
+
+    const maxRows = Math.max(sheet.getRowCount(), 1);
+    const maxCols = Math.max(sheet.getColumnCount(), 1);
+
+    const startRowPos = getAxisPosition(sheet, 'row', Number(shape.startRow()), Number(shape.startRowOffset()));
+    const endRowPos = getAxisPosition(sheet, 'row', Number(shape.endRow()), Number(shape.endRowOffset()));
+    const startColPos = getAxisPosition(sheet, 'col', Number(shape.startColumn()), Number(shape.startColumnOffset()));
+    const endColPos = getAxisPosition(sheet, 'col', Number(shape.endColumn()), Number(shape.endColumnOffset()));
+
+    let startRowLine = snapPositionToLineIndex(sheet, 'row', startRowPos);
+    let endRowLine = snapPositionToLineIndex(sheet, 'row', endRowPos);
+    let startColLine = snapPositionToLineIndex(sheet, 'col', startColPos);
+    let endColLine = snapPositionToLineIndex(sheet, 'col', endColPos);
+
+    startRowLine = Math.min(Math.max(0, startRowLine), maxRows - 1);
+    startColLine = Math.min(Math.max(0, startColLine), maxCols - 1);
+    endRowLine = Math.min(Math.max(startRowLine + 1, endRowLine), maxRows);
+    endColLine = Math.min(Math.max(startColLine + 1, endColLine), maxCols);
+
+    return {
+      row: startRowLine,
+      col: startColLine,
+      rowCount: Math.max(1, endRowLine - startRowLine),
+      colCount: Math.max(1, endColLine - startColLine),
+    };
+  }, [getAxisPosition, snapPositionToLineIndex]);
 
   const createShape = useCallback((component: SmartComponent) => {
     if (createdShapesRef.current.has(component.id)) {
@@ -235,17 +348,11 @@ export function SmartReportDesigner({
     const borderColor = component.style?.borderColor || DefaultColors[component.type]?.border || '#9ca3af';
     const bgColor = DefaultColors[component.type]?.bg || 'rgba(156, 163, 175, 0.2)';
 
-    let x = 0, y = 0, width = 0, height = 0;
-    for (let i = 0; i < range.col; i++) x += sheet.getColumnWidth(i);
-    for (let i = 0; i < range.row; i++) y += sheet.getRowHeight(i);
-    for (let i = 0; i < range.colCount; i++) width += sheet.getColumnWidth(range.col + i);
-    for (let i = 0; i < range.rowCount; i++) height += sheet.getRowHeight(range.row + i);
-
     try {
       const shape = sheet.shapes.add(
         component.id,
         GC.Spread.Sheets.Shapes.AutoShapeType.rectangle,
-        x, y, width, height
+        0, 0, 1, 1
       );
 
       const style = shape.style();
@@ -260,6 +367,7 @@ export function SmartReportDesigner({
       shape.text(component.semantic_description);
       shape.allowMove(true);
       shape.allowResize(true);
+      syncShapeToRange(shape, range, sheet);
 
       shapesRef.current.set(component.id, shape);
       componentMapRef.current.set(component.id, component);
@@ -267,14 +375,18 @@ export function SmartReportDesigner({
     } catch (e) {
       console.error('创建形状失败:', e);
     }
-  }, [spread]);
+  }, [spread, parseRange, syncShapeToRange]);
 
   const removeShape = useCallback((id: string) => {
     if (!spread) return;
     const sheet = spread.getActiveSheet();
     if (!sheet) return;
     if (shapesRef.current.has(id)) {
-      try { sheet.shapes.remove(id); } catch {}
+      try {
+        sheet.shapes.remove(id);
+      } catch {
+        // Ignore missing shapes during async updates.
+      }
       shapesRef.current.delete(id);
       componentMapRef.current.delete(id);
       createdShapesRef.current.delete(id);
@@ -284,39 +396,52 @@ export function SmartReportDesigner({
   const snapToCell = useCallback((x: number, y: number, width: number, height: number) => {
     if (!spreadRef.current) return { row: 0, col: 0, rowCount: 1, colCount: 1 };
     const sheet = spreadRef.current.getActiveSheet();
+    const zoom = getSheetZoom(sheet);
+    const normalizedX = x / zoom;
+    const normalizedY = y / zoom;
+    const normalizedWidth = width / zoom;
+    const normalizedHeight = height / zoom;
+    const maxCols = Math.max(sheet.getColumnCount(), 1);
+    const maxRows = Math.max(sheet.getRowCount(), 1);
 
-    let accX = 0, col = 0;
-    while (col < 100) {
+    let accX = 0;
+    let col = 0;
+    while (col < maxCols) {
       const colWidth = sheet.getColumnWidth(col);
-      if (x >= accX && x < accX + colWidth) {
+      if (normalizedX >= accX && normalizedX < accX + colWidth) {
         break;
       }
       accX += colWidth;
       col++;
     }
+    if (col >= maxCols) col = maxCols - 1;
 
-    let accY = 0, row = 0;
-    while (row < 100) {
+    let accY = 0;
+    let row = 0;
+    while (row < maxRows) {
       const rowHeight = sheet.getRowHeight(row);
-      if (y >= accY && y < accY + rowHeight) {
+      if (normalizedY >= accY && normalizedY < accY + rowHeight) {
         break;
       }
       accY += rowHeight;
       row++;
     }
+    if (row >= maxRows) row = maxRows - 1;
 
-    let accW = 0, colCount = 0;
+    let accW = 0;
+    let colCount = 0;
     let c = col;
-    while (accW < width && c < 100) {
+    while (accW < normalizedWidth && c < maxCols) {
       accW += sheet.getColumnWidth(c);
       colCount++;
       c++;
     }
     if (colCount === 0) colCount = 1;
 
-    let accH = 0, rowCount = 0;
+    let accH = 0;
+    let rowCount = 0;
     let r = row;
-    while (accH < height && r < 100) {
+    while (accH < normalizedHeight && r < maxRows) {
       accH += sheet.getRowHeight(r);
       rowCount++;
       r++;
@@ -324,7 +449,7 @@ export function SmartReportDesigner({
     if (rowCount === 0) rowCount = 1;
 
     return { row, col, rowCount, colCount };
-  }, []);
+  }, [getSheetZoom]);
 
   const selectedIdRef = useRef<string | null>(null);
 
@@ -334,14 +459,27 @@ export function SmartReportDesigner({
 
   // 事件处理器定义（提取为独立函数以便复用）
   const createEventHandlers = useCallback(() => {
+    const handleSelectionChanged = (_: unknown, args: GC.Spread.Sheets.ISelectionChangedEventArgs) => {
+      const nextRange = normalizeSelectionRange(args.newSelections?.[0]);
+      if (!nextRange) return;
+      if (isDefaultSelectionRange(nextRange) && (!args.oldSelections || args.oldSelections.length === 0)) {
+        return;
+      }
+      lastSelectionRef.current = {
+        sheetName: args.sheetName,
+        range: nextRange,
+      };
+    };
+
     const handleShapeChanged = (_: unknown, args: { shape: GC.Spread.Sheets.Shapes.Shape }) => {
       if (!args.shape) return;
+      if (syncingShapeRef.current) return;
       const shapeId = args.shape.name();
 
       try {
-        const bounds = { x: args.shape.x(), y: args.shape.y(), width: args.shape.width(), height: args.shape.height() };
-        const snapped = snapToCell(bounds.x, bounds.y, bounds.width, bounds.height);
+        const snapped = snapShapeToRange(args.shape);
         const newLocation = rangeToLocation(snapped.row, snapped.col, snapped.rowCount, snapped.colCount);
+        syncShapeToRange(args.shape, snapped);
 
         const comp = componentMapRef.current.get(shapeId);
         if (comp) {
@@ -435,8 +573,8 @@ export function SmartReportDesigner({
       }
     };
 
-    return { handleShapeChanged, handleShapeRemoved, handleShapeSelectionChanged };
-  }, [snapToCell, rangeToLocation, checkConflict, onConflict]);
+    return { handleSelectionChanged, handleShapeChanged, handleShapeRemoved, handleShapeSelectionChanged };
+  }, [normalizeSelectionRange, isDefaultSelectionRange, snapShapeToRange, rangeToLocation, checkConflict, onConflict, syncShapeToRange]);
 
   // 绑定事件到 sheet
   const bindSheetEvents = useCallback(() => {
@@ -449,11 +587,13 @@ export function SmartReportDesigner({
 
     try {
       // 先解绑旧的事件（避免重复绑定）
+      sheet.unbind(GC.Spread.Sheets.Events.SelectionChanged);
       sheet.unbind(GC.Spread.Sheets.Events.ShapeChanged);
       sheet.unbind(GC.Spread.Sheets.Events.ShapeRemoved);
       sheet.unbind(GC.Spread.Sheets.Events.ShapeSelectionChanged);
 
       // 绑定新的事件
+      sheet.bind(GC.Spread.Sheets.Events.SelectionChanged, handlers.handleSelectionChanged);
       sheet.bind(GC.Spread.Sheets.Events.ShapeChanged, handlers.handleShapeChanged);
       sheet.bind(GC.Spread.Sheets.Events.ShapeRemoved, handlers.handleShapeRemoved);
       sheet.bind(GC.Spread.Sheets.Events.ShapeSelectionChanged, handlers.handleShapeSelectionChanged);
@@ -463,10 +603,13 @@ export function SmartReportDesigner({
 
     return () => {
       try {
+        sheet.unbind(GC.Spread.Sheets.Events.SelectionChanged, handlers.handleSelectionChanged);
         sheet.unbind(GC.Spread.Sheets.Events.ShapeChanged, handlers.handleShapeChanged);
         sheet.unbind(GC.Spread.Sheets.Events.ShapeRemoved, handlers.handleShapeRemoved);
         sheet.unbind(GC.Spread.Sheets.Events.ShapeSelectionChanged, handlers.handleShapeSelectionChanged);
-      } catch {}
+      } catch {
+        // Ignore cleanup failures when the active sheet has already changed.
+      }
     };
   }, [createEventHandlers]);
 
@@ -480,6 +623,7 @@ export function SmartReportDesigner({
     // 清除旧的 shape 引用（因为 Excel 已经被替换）
     shapesRef.current.clear();
     createdShapesRef.current.clear();
+    lastSelectionRef.current = null;
 
     // 延迟重新绑定事件并重新创建 shapes
     setTimeout(() => {
@@ -507,15 +651,24 @@ export function SmartReportDesigner({
   }, [spread]);
 
   useEffect(() => {
-    if (!spread || components.length === 0) return;
+    if (!spread) return;
 
     const sheet = spread.getActiveSheet();
     if (!sheet) return;
 
     components.forEach(comp => {
+      componentMapRef.current.set(comp.id, comp);
+      const existingShape = shapesRef.current.get(comp.id);
+      const range = parseRange(comp.location);
+
+      if (existingShape && range) {
+        syncShapeToRange(existingShape, range, sheet);
+        return;
+      }
+
       createShape(comp);
     });
-  }, [spread, components, createShape]);
+  }, [spread, components, createShape, parseRange, syncShapeToRange]);
 
   useEffect(() => {
     if (!spread) return;
@@ -525,7 +678,9 @@ export function SmartReportDesigner({
     shapesRef.current.forEach((shape) => {
       try {
         shape.isSelected(false);
-      } catch {}
+      } catch {
+        // Ignore selection sync issues while shapes are being recreated.
+      }
     });
 
     if (selectedId) {
@@ -533,7 +688,9 @@ export function SmartReportDesigner({
       if (shape) {
         try {
           shape.isSelected(true);
-        } catch {}
+        } catch {
+          // Ignore selection sync issues while shapes are being recreated.
+        }
       }
     }
 
@@ -558,14 +715,23 @@ export function SmartReportDesigner({
     }
 
     const designerHost =
-      document.querySelector('.designer') ||
+      e.currentTarget.parentElement?.querySelector('.gc-spread-sheets') ||
       document.querySelector('.gc-spread-sheets') ||
+      document.querySelector('.designer') ||
       document.querySelector('.ss-viewport');
 
     const rect = designerHost?.getBoundingClientRect();
     if (!rect) return;
 
-    const selection = getSelectionRange();
+    const rememberedSelection = lastSelectionRef.current?.sheetName === sheet.name()
+      ? lastSelectionRef.current.range
+      : null;
+    const currentSelection = getSelectionRange();
+    const selection = rememberedSelection ?? (
+      currentSelection && !isDefaultSelectionRange(currentSelection)
+        ? currentSelection
+        : null
+    );
     let targetRange: { row: number; col: number; rowCount: number; colCount: number };
 
     if (selection && selection.rowCount > 0 && selection.colCount > 0) {
@@ -574,22 +740,51 @@ export function SmartReportDesigner({
       const dropX = e.clientX - rect.left;
       const dropY = e.clientY - rect.top;
       const defaultSize = DefaultSizeMap[componentType] || { rows: 2, cols: 2 };
+      const hitInfo = typeof spread.hitTest === 'function' ? spread.hitTest(dropX, dropY) : null;
+      const worksheetHit = hitInfo?.worksheetHitInfo;
 
-      let accX = 0, col = 0;
-      while (accX < dropX && col < 100) {
-        accX += sheet.getColumnWidth(col);
-        col++;
+      if (
+        worksheetHit?.hitTestType === GC.Spread.Sheets.SheetArea.viewport &&
+        typeof worksheetHit.row === 'number' &&
+        worksheetHit.row >= 0 &&
+        typeof worksheetHit.col === 'number' &&
+        worksheetHit.col >= 0
+      ) {
+        targetRange = {
+          row: worksheetHit.row,
+          col: worksheetHit.col,
+          rowCount: defaultSize.rows,
+          colCount: defaultSize.cols,
+        };
+      } else {
+        const zoom = getSheetZoom(sheet);
+        const normalizedX = dropX / zoom;
+        const normalizedY = dropY / zoom;
+        const maxCols = Math.max(sheet.getColumnCount(), 1);
+        const maxRows = Math.max(sheet.getRowCount(), 1);
+
+        let accX = 0;
+        let col = 0;
+        while (col < maxCols) {
+          const colWidth = sheet.getColumnWidth(col);
+          if (normalizedX < accX + colWidth) break;
+          accX += colWidth;
+          col++;
+        }
+        if (col >= maxCols) col = maxCols - 1;
+
+        let accY = 0;
+        let row = 0;
+        while (row < maxRows) {
+          const rowHeight = sheet.getRowHeight(row);
+          if (normalizedY < accY + rowHeight) break;
+          accY += rowHeight;
+          row++;
+        }
+        if (row >= maxRows) row = maxRows - 1;
+
+        targetRange = { row, col, rowCount: defaultSize.rows, colCount: defaultSize.cols };
       }
-      if (col > 0) col--;
-
-      let accY = 0, row = 0;
-      while (accY < dropY && row < 100) {
-        accY += sheet.getRowHeight(row);
-        row++;
-      }
-      if (row > 0) row--;
-
-      targetRange = { row, col, rowCount: defaultSize.rows, colCount: defaultSize.cols };
     }
 
     if (checkConflict(targetRange)) {
@@ -613,7 +808,7 @@ export function SmartReportDesigner({
     setComponents(prev => [...prev, newComp]);
     setSelectedId(newComp.id);
     setTimeout(() => createShape(newComp), 50);
-  }, [spread, components.length, createShape, checkConflict, onConflict]);
+  }, [spread, components.length, createShape, checkConflict, getSelectionRange, getSheetZoom, isDefaultSelectionRange, onConflict, rangeToLocation]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -643,7 +838,7 @@ export function SmartReportDesigner({
       createShape(updated);
       updatingComponentRef.current.delete(updated.id);
     }, 50);
-  }, [createShape, removeShape, checkConflict, onConflict]);
+  }, [createShape, removeShape, checkConflict, onConflict, parseRange]);
 
   const handleDeleteComponent = useCallback((id: string) => {
     removeShape(id);
@@ -884,7 +1079,7 @@ export function SmartReportDesigner({
     }
 
     e.target.value = '';
-  }, [spread, createShape, removeShape, onImportExcel, bindSheetEvents]);
+  }, [spread, createShape, removeShape, onImportExcel]);
 
   const selectedComponent = useMemo(() => {
     return components.find(c => c.id === selectedId) || null;
@@ -1023,7 +1218,7 @@ export function SmartReportDesigner({
         }
       },
     };
-  }, [getComponents, getSpread, getDesigner, createShape, clearComponents, loadComponents, exportCleanExcel, handleExportExcel, handleImportExcel, spread, components, selectedId, bindSheetEvents]);
+  }, [getComponents, getSpread, getDesigner, setSelectedComponent, createShape, clearComponents, loadComponents, exportCleanExcel, handleExportExcel, handleImportExcel, spread, components, selectedId, bindSheetEvents]);
 
   return (
     <div className={`flex h-screen w-screen overflow-hidden bg-gray-100 ${className}`} style={style}>
