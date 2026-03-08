@@ -13,13 +13,14 @@ import { SmartComponent, DefaultColors } from '../types/SmartComponent';
 import { ComponentLibrary } from './ComponentLibrary';
 import { ComponentList } from './ComponentList';
 import { PropertiesPanel } from './PropertiesPanel';
+import type {
+  SmartReportDesignerHandle,
+  SmartReportExcelSource,
+  SmartReportTemplateConfig,
+  SmartReportTemplateExportPayload,
+  SmartReportTemplateLoadPayload,
+} from '../lib/smart-report-designer-api';
 import { Download, Layers, Upload, FileSpreadsheet } from 'lucide-react';
-
-// License key - can be set from outside
-export const setLicenseKey = (sheetsLicenseKey: string, designerLicenseKey: string) => {
-  (GC.Spread.Sheets as any).LicenseKey = (ExcelIO as any).LicenseKey = sheetsLicenseKey;
-  (GC.Spread.Sheets as any).Designer.LicenseKey = designerLicenseKey;
-};
 
 const colLetterToIndex = (letters: string): number => {
   let result = 0;
@@ -64,6 +65,46 @@ const TypeNames: Record<string, string> = {
   Gantt: '甘特表',
 };
 
+const EXCEL_FILE_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+const base64ToUint8Array = (value: string): Uint8Array => {
+  const matches = value.match(/^data:.*?;base64,(.*)$/);
+  const base64 = matches?.[1] ?? value;
+  const normalized = base64.replace(/\s/g, '');
+  const binary = window.atob(normalized);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
+  return bytes;
+};
+
+const normalizeExcelSourceToFile = (source: SmartReportExcelSource): File => {
+  if (source instanceof File) {
+    return source;
+  }
+
+  if (source instanceof Blob) {
+    return new File([source], 'template.xlsx', { type: source.type || EXCEL_FILE_MIME });
+  }
+
+  if (source instanceof ArrayBuffer) {
+    return new File([source], 'template.xlsx', { type: EXCEL_FILE_MIME });
+  }
+
+  if (ArrayBuffer.isView(source)) {
+    return new File([source], 'template.xlsx', { type: EXCEL_FILE_MIME });
+  }
+
+  if (typeof source === 'string') {
+    return new File([base64ToUint8Array(source)], 'template.xlsx', { type: EXCEL_FILE_MIME });
+  }
+
+  throw new Error('不支持的 Excel 数据格式');
+};
+
 export interface SmartReportDesignerProps {
   /** 初始组件列表 */
   initialComponents?: SmartComponent[];
@@ -101,6 +142,8 @@ export interface SmartReportDesignerProps {
   onExportExcel?: (blob: Blob) => void;
   /** 导入 Excel 回调，返回组件列表 */
   onImportExcel?: (blob: Blob) => Promise<SmartComponent[]> | SmartComponent[];
+  /** 设计器 API 就绪回调 */
+  onApiReady?: (api: SmartReportDesignerHandle) => void;
 }
 
 export function SmartReportDesigner({
@@ -122,6 +165,7 @@ export function SmartReportDesigner({
   style,
   onExportExcel,
   onImportExcel,
+  onApiReady,
 }: SmartReportDesignerProps) {
   const [spread, setSpread] = useState<GC.Spread.Sheets.Workbook | null>(null);
   const [components, setComponents] = useState<SmartComponent[]>(initialComponents);
@@ -166,6 +210,42 @@ export function SmartReportDesigner({
     setSpread(workbook);
     onSpreadReady?.(workbook, designer);
   }, [onSpreadReady]);
+
+  const normalizeComponentCollection = useCallback((
+    input: SmartReportTemplateLoadPayload['components']
+  ): SmartComponent[] => {
+    if (!input) {
+      return [];
+    }
+
+    let parsed: unknown = input;
+
+    if (typeof input === 'string') {
+      parsed = JSON.parse(input);
+    }
+
+    const componentList = Array.isArray(parsed)
+      ? parsed
+      : (parsed && typeof parsed === 'object' && Array.isArray((parsed as SmartReportTemplateConfig).component_list)
+        ? (parsed as SmartReportTemplateConfig).component_list
+        : null);
+
+    if (!componentList) {
+      throw new Error('组件 JSON 格式错误，缺少 component_list 或数组内容');
+    }
+
+    return componentList.map((comp) => ({
+      id: comp.id || uuidv4(),
+      location: comp.location,
+      type: comp.type,
+      prompt: comp.prompt || '',
+      semantic_description: comp.semantic_description || (comp as SmartComponent & { name?: string }).name || '',
+      style: comp.style,
+      data_example: comp.data_example,
+      data_source: comp.data_source,
+      shapeId: comp.shapeId,
+    }));
+  }, []);
 
   const parseRange = useCallback((location: string): { row: number; col: number; rowCount: number; colCount: number } | null => {
     try {
@@ -872,58 +952,6 @@ export function SmartReportDesigner({
     fileInputRef.current?.click();
   }, []);
 
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const content = event.target?.result as string;
-        const config = JSON.parse(content);
-
-        if (!config.component_list || !Array.isArray(config.component_list)) {
-          alert('配置文件格式错误：缺少 component_list 字段');
-          return;
-        }
-
-        // 清除现有组件和形状
-        components.forEach(comp => {
-          removeShape(comp.id);
-        });
-        createdShapesRef.current.clear();
-
-        // 设置新组件
-        const importedComponents: SmartComponent[] = config.component_list.map((comp: SmartComponent & { name?: string }) => ({
-          id: comp.id || uuidv4(),
-          location: comp.location,
-          type: comp.type,
-          prompt: comp.prompt || '',
-          semantic_description: comp.semantic_description || comp.name || '',
-          style: comp.style,
-          data_example: comp.data_example,
-          data_source: comp.data_source
-        }));
-
-        setComponents(importedComponents);
-        setSelectedId(null);
-
-        // 延迟创建形状，等待表格准备就绪
-        setTimeout(() => {
-          importedComponents.forEach((comp: SmartComponent) => {
-            createShape(comp);
-          });
-        }, 100);
-      } catch (error) {
-        console.error('导入配置失败:', error);
-        alert('导入失败：配置文件格式错误');
-      }
-    };
-    reader.readAsText(file);
-
-    e.target.value = '';
-  }, [components, createShape, removeShape]);
-
   // 清除所有 shapes（用于导出 Excel）
   const clearAllShapes = useCallback(() => {
     if (!spread) return;
@@ -1017,90 +1045,25 @@ export function SmartReportDesigner({
     excelFileInputRef.current?.click();
   }, []);
 
-  // 处理 Excel 文件导入
-  const handleExcelFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      if (!spread) {
-        alert('SpreadJS 尚未初始化');
-        return;
-      }
-
-      const excelIO = new (ExcelIO as any).IO();
-
-      // 1. 加载 Excel 到 SpreadJS
-      excelIO.open(file, async (json: any) => {
-        // 清除现有 shapes
-        componentsRef.current.forEach(comp => {
-          removeShape(comp.id);
-        });
-        shapesRef.current.clear();
-        componentMapRef.current.clear();
-        createdShapesRef.current.clear();
-
-        // 加载 JSON 到 workbook（会触发 ActiveSheetChanged 事件）
-        spread.fromJSON(json);
-
-        // 更新 spreadRef（确保指向最新的 spread）
-        spreadRef.current = spread;
-
-        // 2. 获取导入的组件列表（通过回调）
-        let importedComponents: SmartComponent[] = [];
-        if (onImportExcel) {
-          try {
-            const result = onImportExcel(file);
-            importedComponents = await Promise.resolve(result);
-          } catch (error) {
-            console.error('获取组件列表失败:', error);
-          }
-        }
-
-        // 3. 设置组件状态
-        setComponents(importedComponents);
-        setSelectedId(null);
-
-        // 4. 根据组件渲染 shapes（等待 ActiveSheetChanged 事件触发后）
-        if (importedComponents.length > 0) {
-          setTimeout(() => {
-            importedComponents.forEach((comp: SmartComponent) => {
-              createShape(comp);
-            });
-          }, 200);
-        }
-      }, (error: any) => {
-        console.error('加载 Excel 失败:', error);
-        alert('加载 Excel 失败: ' + (error?.errorMessage || '未知错误'));
-      });
-    } catch (error) {
-      console.error('导入 Excel 失败:', error);
-      alert('导入 Excel 失败');
-    }
-
-    e.target.value = '';
-  }, [spread, createShape, removeShape, onImportExcel]);
-
-  const selectedComponent = useMemo(() => {
-    return components.find(c => c.id === selectedId) || null;
-  }, [components, selectedId]);
-
   // API 方法 - 允许外部调用
-  const getComponents = useCallback(() => components, [components]);
-  const getSpread = useCallback(() => spread, [spread]);
+  const getComponents = useCallback(() => componentsRef.current, []);
+  const getSpread = useCallback(() => spreadRef.current, []);
   const getDesigner = useCallback(() => designerRef.current, []);
   const setSelectedComponent = useCallback((id: string | null) => setSelectedId(id), []);
   const clearComponents = useCallback(() => {
-    components.forEach(comp => removeShape(comp.id));
+    componentsRef.current.forEach(comp => removeShape(comp.id));
     setComponents([]);
     setSelectedId(null);
-  }, [components, removeShape]);
+  }, [removeShape]);
 
   // 加载外部组件（用于从后端恢复）
   const loadComponents = useCallback((newComponents: SmartComponent[]) => {
     // 1. 清除现有组件和 shapes
-    components.forEach(comp => removeShape(comp.id));
+    componentsRef.current.forEach(comp => removeShape(comp.id));
+    shapesRef.current.clear();
+    componentMapRef.current.clear();
     createdShapesRef.current.clear();
+    lastSelectionRef.current = null;
 
     // 2. 更新 spreadRef（确保指向最新的 spread）
     if (spread) {
@@ -1117,7 +1080,54 @@ export function SmartReportDesigner({
         createShape(comp);
       });
     }, 200);
-  }, [components, removeShape, createShape, spread]);
+  }, [removeShape, createShape, spread]);
+
+  const buildExportConfig = useCallback((componentList: SmartComponent[] = componentsRef.current): SmartReportTemplateConfig => ({
+    template_id: '',
+    version: '',
+    component_list: componentList.map(({ id, location, type, prompt, semantic_description, style, data_example, data_source }) => ({
+      id,
+      location,
+      type,
+      prompt,
+      semantic_description,
+      style,
+      data_example,
+      data_source,
+    })),
+  }), []);
+
+  const loadWorkbookFromExcelSource = useCallback(async (excelSource: SmartReportExcelSource): Promise<void> => {
+    const currentSpread = spreadRef.current;
+    if (!currentSpread) {
+      throw new Error('SpreadJS 尚未初始化');
+    }
+
+    const file = normalizeExcelSourceToFile(excelSource);
+    const excelIO = new (ExcelIO as any).IO();
+
+    await new Promise<void>((resolve, reject) => {
+      excelIO.open(file, (json: any) => {
+        componentsRef.current.forEach(comp => {
+          removeShape(comp.id);
+        });
+        shapesRef.current.clear();
+        componentMapRef.current.clear();
+        createdShapesRef.current.clear();
+        lastSelectionRef.current = null;
+
+        currentSpread.fromJSON(json);
+        spreadRef.current = currentSpread;
+
+        setTimeout(() => {
+          bindSheetEvents();
+          resolve();
+        }, 100);
+      }, (error: any) => {
+        reject(new Error(error?.errorMessage || '加载 Excel 失败'));
+      });
+    });
+  }, [bindSheetEvents, removeShape]);
 
   // 导出干净的 Excel（不含 shapes）
   const exportCleanExcel = useCallback(async (): Promise<Blob> => {
@@ -1168,57 +1178,170 @@ export function SmartReportDesigner({
     });
   }, [spread, clearAllShapes, restoreAllShapes]);
 
+  const loadTemplateData = useCallback(async ({
+    excelFile,
+    components: rawComponents,
+  }: SmartReportTemplateLoadPayload): Promise<void> => {
+    if (excelFile) {
+      await loadWorkbookFromExcelSource(excelFile);
+    }
+
+    if (rawComponents !== undefined) {
+      const nextComponents = normalizeComponentCollection(rawComponents);
+      loadComponents(nextComponents);
+    } else if (excelFile) {
+      loadComponents([]);
+    }
+  }, [loadWorkbookFromExcelSource, loadComponents, normalizeComponentCollection]);
+
+  const exportTemplateData = useCallback(async (): Promise<SmartReportTemplateExportPayload> => {
+    const excelFile = await exportCleanExcel();
+    const exportedComponents = [...componentsRef.current];
+
+    return {
+      excelFile,
+      components: exportedComponents,
+      config: buildExportConfig(exportedComponents),
+    };
+  }, [buildExportConfig, exportCleanExcel]);
+
+  const rebindEvents = useCallback(() => {
+    if (spreadRef.current) {
+      bindSheetEvents();
+    }
+  }, [bindSheetEvents]);
+
+  const addComponent = useCallback((comp: Omit<SmartComponent, 'id'>) => {
+    const newComp = { ...comp, id: uuidv4() };
+    setComponents(prev => [...prev, newComp]);
+    setTimeout(() => createShape(newComp), 50);
+    return newComp;
+  }, [createShape]);
+
+  const debug = useCallback(() => {
+    const currentSpread = spreadRef.current;
+
+    console.log('[DEBUG] 当前状态:', {
+      spread: !!currentSpread,
+      spreadRef: !!spreadRef.current,
+      activeSheet: currentSpread ? !!currentSpread.getActiveSheet() : null,
+      components: componentsRef.current.length,
+      shapesRefSize: shapesRef.current.size,
+      componentMapSize: componentMapRef.current.size,
+      createdShapesSize: createdShapesRef.current.size,
+      selectedId: selectedIdRef.current,
+    });
+
+    if (currentSpread) {
+      const sheet = currentSpread.getActiveSheet();
+      if (sheet) {
+        console.log('[DEBUG] Sheet 信息:', {
+          name: sheet.name(),
+          rowCount: sheet.getRowCount(),
+          colCount: sheet.getColumnCount(),
+          shapesCount: sheet.shapes.all().length,
+        });
+      }
+    }
+  }, []);
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        const config = JSON.parse(content);
+
+        if (!config.component_list || !Array.isArray(config.component_list)) {
+          alert('配置文件格式错误：缺少 component_list 字段');
+          return;
+        }
+
+        const importedComponents = normalizeComponentCollection(config);
+        loadComponents(importedComponents);
+      } catch (error) {
+        console.error('导入配置失败:', error);
+        alert('导入失败：配置文件格式错误');
+      }
+    };
+    reader.readAsText(file);
+
+    e.target.value = '';
+  }, [loadComponents, normalizeComponentCollection]);
+
+  const handleExcelFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      await loadTemplateData({
+        excelFile: file,
+        components: onImportExcel ? await Promise.resolve(onImportExcel(file)) : [],
+      });
+    } catch (error) {
+      console.error('导入 Excel 失败:', error);
+      alert('导入 Excel 失败: ' + (error instanceof Error ? error.message : '未知错误'));
+    }
+
+    e.target.value = '';
+  }, [loadTemplateData, onImportExcel]);
+
+  const selectedComponent = useMemo(() => {
+    return components.find(c => c.id === selectedId) || null;
+  }, [components, selectedId]);
+
   // Expose methods via ref if needed
   useEffect(() => {
-    // Expose to window for debugging (optional)
-    (window as any).smartReportDesigner = {
+    if (!spread) {
+      return;
+    }
+
+    const api: SmartReportDesignerHandle = {
       getComponents,
       getSpread,
       getDesigner,
       setSelectedComponent,
       clearComponents,
       loadComponents,
+      loadTemplateData,
       exportCleanExcel,
-      rebindEvents: () => {
-        if (spread) {
-          spreadRef.current = spread;
-        }
-        bindSheetEvents();
-      },
-      addComponent: (comp: Omit<SmartComponent, 'id'>) => {
-        const newComp = { ...comp, id: uuidv4() };
-        setComponents(prev => [...prev, newComp]);
-        setTimeout(() => createShape(newComp), 50);
-        return newComp;
-      },
+      exportTemplateData,
+      rebindEvents,
+      addComponent,
       exportExcel: handleExportExcel,
       importExcel: handleImportExcel,
-      // 调试方法
-      debug: () => {
-        console.log('[DEBUG] 当前状态:', {
-          spread: !!spread,
-          spreadRef: !!spreadRef.current,
-          activeSheet: spread ? !!spread.getActiveSheet() : null,
-          components: components.length,
-          shapesRefSize: shapesRef.current.size,
-          componentMapSize: componentMapRef.current.size,
-          createdShapesSize: createdShapesRef.current.size,
-          selectedId,
-        });
-        if (spread) {
-          const sheet = spread.getActiveSheet();
-          if (sheet) {
-            console.log('[DEBUG] Sheet 信息:', {
-              name: sheet.name(),
-              rowCount: sheet.getRowCount(),
-              colCount: sheet.getColumnCount(),
-              shapesCount: sheet.shapes.all().length,
-            });
-          }
-        }
-      },
+      debug,
     };
-  }, [getComponents, getSpread, getDesigner, setSelectedComponent, createShape, clearComponents, loadComponents, exportCleanExcel, handleExportExcel, handleImportExcel, spread, components, selectedId, bindSheetEvents]);
+
+    (window as any).smartReportDesigner = api;
+    onApiReady?.(api);
+
+    return () => {
+      if ((window as any).smartReportDesigner === api) {
+        delete (window as any).smartReportDesigner;
+      }
+    };
+  }, [
+    addComponent,
+    clearComponents,
+    debug,
+    exportCleanExcel,
+    exportTemplateData,
+    getComponents,
+    getDesigner,
+    getSpread,
+    handleExportExcel,
+    handleImportExcel,
+    loadComponents,
+    loadTemplateData,
+    onApiReady,
+    rebindEvents,
+    setSelectedComponent,
+    spread,
+  ]);
 
   return (
     <div className={`flex h-screen w-screen overflow-hidden bg-gray-100 ${className}`} style={style}>

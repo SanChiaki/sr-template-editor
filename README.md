@@ -48,7 +48,6 @@ function App() {
 
 ```tsx
 import { SmartReportDesigner, setLicenseKey, SmartComponent } from 'smart-report-designer';
-import GC from '@grapecity/spread-sheets';
 import 'smart-report-designer/style.css';
 
 // 设置 SpreadJS 许可证（可选）
@@ -58,28 +57,127 @@ function App() {
   const initialComponents: SmartComponent[] = [
     {
       id: '1',
-      name: '销售表格',
       type: 'Table',
       location: 'A1:D10',
       prompt: '生成销售数据表格',
+      semantic_description: '销售表格',
     }
   ];
-
-  const handleSpreadReady = (workbook: GC.Spread.Sheets.Workbook, designer: any) => {
-    console.log('SpreadJS ready', workbook);
-  };
 
   return (
     <SmartReportDesigner
       initialComponents={initialComponents}
       onComponentsChange={(comps) => console.log('Changed:', comps)}
       onSelectComponent={(comp) => console.log('Selected:', comp)}
-      onSpreadReady={handleSpreadReady}
       onExport={(config) => console.log('Export:', config)}
       onConflict={(msg) => alert(msg)}
     />
   );
 }
+```
+
+## iframe 集成
+
+部署后的编辑器页面支持通过 `iframe + postMessage` 与外部系统通信，内置两类请求：
+
+- `smart-report:load`：加载 Excel 文件和组件 JSON
+- `smart-report:export`：导出当前 Excel 文件和组件 JSON
+
+编辑器会主动向父页面发送 `smart-report:ready`，表示通信接口已可用。
+
+### 父页面示例
+
+```ts
+const iframe = document.getElementById('report-editor') as HTMLIFrameElement;
+
+window.addEventListener('message', async (event) => {
+  const { type, requestId, payload } = event.data || {};
+
+  if (type === 'smart-report:ready') {
+    const excelFile = await fetch('/template.xlsx').then((res) => res.blob());
+    const componentConfig = await fetch('/template-config.json').then((res) => res.json());
+
+    iframe.contentWindow?.postMessage({
+      type: 'smart-report:load',
+      requestId: 'load-001',
+      payload: {
+        excelFile,
+        components: componentConfig,
+      },
+    }, '*');
+  }
+
+  if (type === 'smart-report:loaded') {
+    console.log('模板已加载', requestId, payload.componentCount);
+  }
+
+  if (type === 'smart-report:exported') {
+    console.log('导出完成', requestId, payload);
+    // payload.excelFile: Blob
+    // payload.components: SmartComponent[]
+    // payload.config: { template_id?: string; version?: string; component_list: SmartComponent[] }
+  }
+
+  if (type === 'smart-report:error') {
+    console.error('编辑器调用失败', requestId, payload.message);
+  }
+});
+
+function exportCurrentTemplate() {
+  iframe.contentWindow?.postMessage({
+    type: 'smart-report:export',
+    requestId: 'export-001',
+  }, '*');
+}
+```
+
+### 消息格式
+
+加载请求：
+
+```ts
+{
+  type: 'smart-report:load',
+  requestId?: string,
+  payload: {
+    excelFile: File | Blob | ArrayBuffer | Uint8Array | base64String,
+    components: SmartComponent[] | { component_list: SmartComponent[] } | jsonString,
+  }
+}
+```
+
+导出响应：
+
+```ts
+{
+  source: 'smart-report-editor',
+  type: 'smart-report:exported',
+  requestId?: string,
+  payload: {
+    excelFile: Blob,
+    components: SmartComponent[],
+    config: {
+      template_id?: string,
+      version?: string,
+      component_list: SmartComponent[],
+    }
+  }
+}
+```
+
+### 组件内调用
+
+如果你不是以整页 `iframe` 方式集成，而是直接在 React 应用中嵌入组件，可以通过 `onApiReady` 获取同一套程序化 API：
+
+```tsx
+<SmartReportDesigner
+  onApiReady={(api) => {
+    api.loadTemplateData({
+      excelFile,
+      components: { component_list: initialComponents },
+    });
+  }}
+/>
 ```
 
 ## Props
@@ -92,6 +190,7 @@ function App() {
 | `onSpreadReady` | `(workbook, designer) => void` | - | SpreadJS 就绪回调 |
 | `onExport` | `(config) => void` | - | 导出配置回调 |
 | `onConflict` | `(message: string) => void` | - | 区域冲突警告回调 |
+| `onApiReady` | `(api: SmartReportDesignerHandle) => void` | - | 设计器 API 就绪后回调 |
 | `title` | `ReactNode` | `"SmartReport"` | 头部标题 |
 | `rightPanelWidth` | `number` | `340` | 右侧面板宽度(px) |
 | `hideComponentLibrary` | `boolean` | `false` | 隐藏组件库 |
