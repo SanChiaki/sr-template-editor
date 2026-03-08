@@ -6,6 +6,14 @@ import type { PreRenderedAsset } from 'rollup'
 // 库模式配置
 export default defineConfig(({ mode }) => {
   const isLib = mode === 'lib'
+  const appBuild = {
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        iframeHost: path.resolve(__dirname, 'iframe-host.html'),
+      },
+    },
+  }
 
   return {
     plugins: [
@@ -57,6 +65,6 @@ export default defineConfig(({ mode }) => {
       },
       cssCodeSplit: false,
       sourcemap: true,
-    } : undefined,
+    } : appBuild,
   }
 })

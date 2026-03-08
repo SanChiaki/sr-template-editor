@@ -178,6 +178,7 @@ export function SmartReportDesigner({
   const designerRef = useRef<any>(null);
   const isInternalSelectionRef = useRef(false);
   const createdShapesRef = useRef<Set<string>>(new Set());
+  const suppressShapeChangedRef = useRef<Set<string>>(new Set());
   const updatingComponentRef = useRef<Set<string>>(new Set());
   const spreadRef = useRef<GC.Spread.Sheets.Workbook | null>(null);
   const componentsRef = useRef<SmartComponent[]>([]);
@@ -429,6 +430,8 @@ export function SmartReportDesigner({
     const bgColor = DefaultColors[component.type]?.bg || 'rgba(156, 163, 175, 0.2)';
 
     try {
+      suppressShapeChangedRef.current.add(component.id);
+
       const shape = sheet.shapes.add(
         component.id,
         GC.Spread.Sheets.Shapes.AutoShapeType.rectangle,
@@ -452,7 +455,11 @@ export function SmartReportDesigner({
       shapesRef.current.set(component.id, shape);
       componentMapRef.current.set(component.id, component);
       createdShapesRef.current.add(component.id);
+      window.setTimeout(() => {
+        suppressShapeChangedRef.current.delete(component.id);
+      }, 150);
     } catch (e) {
+      suppressShapeChangedRef.current.delete(component.id);
       console.error('创建形状失败:', e);
     }
   }, [spread, parseRange, syncShapeToRange]);
@@ -470,6 +477,7 @@ export function SmartReportDesigner({
       shapesRef.current.delete(id);
       componentMapRef.current.delete(id);
       createdShapesRef.current.delete(id);
+      suppressShapeChangedRef.current.delete(id);
     }
   }, [spread]);
 
@@ -555,6 +563,7 @@ export function SmartReportDesigner({
       if (!args.shape) return;
       if (syncingShapeRef.current) return;
       const shapeId = args.shape.name();
+      if (suppressShapeChangedRef.current.has(shapeId)) return;
 
       try {
         const snapped = snapShapeToRange(args.shape);
@@ -611,6 +620,7 @@ export function SmartReportDesigner({
           shapesRef.current.delete(id);
           componentMapRef.current.delete(id);
           createdShapesRef.current.delete(id);
+          suppressShapeChangedRef.current.delete(id);
         }
       });
     };
@@ -637,6 +647,7 @@ export function SmartReportDesigner({
           shapesRef.current.delete(id);
           componentMapRef.current.delete(id);
           createdShapesRef.current.delete(id);
+          suppressShapeChangedRef.current.delete(id);
           setComponents(prev => prev.filter(c => c.id !== id));
         });
       }
@@ -703,6 +714,7 @@ export function SmartReportDesigner({
     // 清除旧的 shape 引用（因为 Excel 已经被替换）
     shapesRef.current.clear();
     createdShapesRef.current.clear();
+    suppressShapeChangedRef.current.clear();
     lastSelectionRef.current = null;
 
     // 延迟重新绑定事件并重新创建 shapes
@@ -974,6 +986,7 @@ export function SmartReportDesigner({
     shapesRef.current.clear();
     componentMapRef.current.clear();
     createdShapesRef.current.clear();
+    suppressShapeChangedRef.current.clear();
 
     return shapeData;
   }, [spread]);
@@ -1052,6 +1065,7 @@ export function SmartReportDesigner({
   const setSelectedComponent = useCallback((id: string | null) => setSelectedId(id), []);
   const clearComponents = useCallback(() => {
     componentsRef.current.forEach(comp => removeShape(comp.id));
+    componentsRef.current = [];
     setComponents([]);
     setSelectedId(null);
   }, [removeShape]);
@@ -1063,6 +1077,7 @@ export function SmartReportDesigner({
     shapesRef.current.clear();
     componentMapRef.current.clear();
     createdShapesRef.current.clear();
+    suppressShapeChangedRef.current.clear();
     lastSelectionRef.current = null;
 
     // 2. 更新 spreadRef（确保指向最新的 spread）
@@ -1071,6 +1086,7 @@ export function SmartReportDesigner({
     }
 
     // 3. 设置新组件
+    componentsRef.current = newComponents;
     setComponents(newComponents);
     setSelectedId(null);
 
@@ -1114,6 +1130,7 @@ export function SmartReportDesigner({
         shapesRef.current.clear();
         componentMapRef.current.clear();
         createdShapesRef.current.clear();
+        suppressShapeChangedRef.current.clear();
         lastSelectionRef.current = null;
 
         currentSpread.fromJSON(json);
@@ -1213,6 +1230,7 @@ export function SmartReportDesigner({
 
   const addComponent = useCallback((comp: Omit<SmartComponent, 'id'>) => {
     const newComp = { ...comp, id: uuidv4() };
+    componentsRef.current = [...componentsRef.current, newComp];
     setComponents(prev => [...prev, newComp]);
     setTimeout(() => createShape(newComp), 50);
     return newComp;
