@@ -180,6 +180,27 @@ function exportCurrentTemplate() {
 />
 ```
 
+## 部署上下文配置
+
+如果项目不是部署在域名根路径下，而是部署在带上下文的地址，比如 `https://www.example.com/editor/`，可以在构建时配置：
+
+```bash
+VITE_APP_BASE_PATH=/editor/ pnpm build
+```
+
+也可以写到 `.env.production` 或其他对应环境文件中：
+
+```bash
+VITE_APP_BASE_PATH=/editor/
+```
+
+说明：
+
+- `VITE_APP_BASE_PATH` 默认是 `/`
+- 支持写成 `/editor` 或 `/editor/`，构建时会自动规范成 `/editor/`
+- 这个配置会作用于构建产物中的 JS、CSS、图片等静态资源路径
+- 如果接口也有上下文，请单独配置 `VITE_API_BASE_URL`
+
 ## Props
 
 | 属性 | 类型 | 默认值 | 说明 |

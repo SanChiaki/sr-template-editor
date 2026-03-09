@@ -1,11 +1,35 @@
 import path from "path"
 import react from "@vitejs/plugin-react"
-import { defineConfig } from "vite"
+import { defineConfig, loadEnv } from "vite"
 import type { PreRenderedAsset } from 'rollup'
+
+const normalizeBasePath = (rawBasePath?: string) => {
+  if (!rawBasePath) {
+    return '/'
+  }
+
+  const trimmedBasePath = rawBasePath.trim()
+
+  if (!trimmedBasePath || trimmedBasePath === '/') {
+    return '/'
+  }
+
+  if (/^https?:\/\//i.test(trimmedBasePath)) {
+    return trimmedBasePath.endsWith('/') ? trimmedBasePath : `${trimmedBasePath}/`
+  }
+
+  const withLeadingSlash = trimmedBasePath.startsWith('/')
+    ? trimmedBasePath
+    : `/${trimmedBasePath}`
+
+  return withLeadingSlash.endsWith('/') ? withLeadingSlash : `${withLeadingSlash}/`
+}
 
 // 库模式配置
 export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
   const isLib = mode === 'lib'
+  const base = normalizeBasePath(env.VITE_APP_BASE_PATH)
   const appBuild = {
     rollupOptions: {
       input: {
@@ -16,6 +40,7 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
+    base: isLib ? '/' : base,
     plugins: [
       react(),
     ],
