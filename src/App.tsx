@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Save, FolderOpen, Loader2 } from 'lucide-react';
 import { SmartReportDesigner } from './components/SmartReportDesigner';
 import type { SmartReportDesignerHandle } from './lib/smart-report-designer-api';
-import type { SmartComponent } from './types/SmartComponent';
 import { saveTemplate, loadTemplate } from './api/templateApi';
 import {
   SMART_REPORT_IFRAME_SOURCE,
@@ -16,8 +15,6 @@ import {
 import './App.css';
 
 function App() {
-  const savedComponents = localStorage.getItem('smartreport_components');
-  const initialComponents: SmartComponent[] = savedComponents ? JSON.parse(savedComponents) : [];
   const designerApiRef = useRef<SmartReportDesignerHandle | null>(null);
   const readyMessageSentRef = useRef(false);
   const [currentTemplateId, setCurrentTemplateId] = useState<string | null>(null);
@@ -62,10 +59,6 @@ function App() {
     postIframeMessage(readyMessage);
     readyMessageSentRef.current = true;
   }, [postIframeMessage]);
-
-  const handleComponentsChange = useCallback((components: SmartComponent[]) => {
-    localStorage.setItem('smartreport_components', JSON.stringify(components));
-  }, []);
 
   const handleSaveToBackend = useCallback(async () => {
     setIsSaving(true);
@@ -207,9 +200,7 @@ function App() {
 
   return (
     <SmartReportDesigner
-      initialComponents={initialComponents}
       onApiReady={handleApiReady}
-      onComponentsChange={handleComponentsChange}
       extraHeaderActions={extraHeaderActions}
     />
   );
