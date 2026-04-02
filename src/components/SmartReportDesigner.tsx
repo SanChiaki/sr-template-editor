@@ -1123,6 +1123,7 @@ export function SmartReportDesigner({
     const excelIO = new (ExcelIO as any).IO();
 
     await new Promise<void>((resolve, reject) => {
+      // 关键：设置 fullTrustOnLoad: true 以正确加载 charts 等复杂对象
       excelIO.open(file, (json: any) => {
         componentsRef.current.forEach(comp => {
           removeShape(comp.id);
@@ -1133,7 +1134,8 @@ export function SmartReportDesigner({
         suppressShapeChangedRef.current.clear();
         lastSelectionRef.current = null;
 
-        currentSpread.fromJSON(json);
+        // 使用 ignoreStyle: false 确保样式也被加载
+        currentSpread.fromJSON(json, { ignoreStyle: false });
         spreadRef.current = currentSpread;
 
         setTimeout(() => {
@@ -1142,7 +1144,7 @@ export function SmartReportDesigner({
         }, 100);
       }, (error: any) => {
         reject(new Error(error?.errorMessage || '加载 Excel 失败'));
-      });
+      }, { fullTrustOnLoad: true });
     });
   }, [bindSheetEvents, removeShape]);
 
