@@ -1115,36 +1115,83 @@ export function SmartReportDesigner({
 
   const loadWorkbookFromExcelSource = useCallback(async (excelSource: SmartReportExcelSource): Promise<void> => {
     const currentSpread = spreadRef.current;
+    const currentDesigner = designerRef.current;
     if (!currentSpread) {
       throw new Error('SpreadJS 尚未初始化');
     }
 
     const file = normalizeExcelSourceToFile(excelSource);
+
+    // 先清除现有的 shapes（我们的组件覆盖层）
+    componentsRef.current.forEach(comp => {
+      removeShape(comp.id);
+    });
+    shapesRef.current.clear();
+    componentMapRef.current.clear();
+    createdShapesRef.current.clear();
+    suppressShapeChangedRef.current.clear();
+    lastSelectionRef.current = null;
+
+    // 尝试使用 Designer 的内部命令来加载 Excel（这能正确处理 charts）
+    // Designer 的 openExcel 命令会正确处理所有 Excel 内容包括图表
+    const GCDesigner = (GC.Spread.Sheets as any).Designer;
+    if (currentDesigner && GCDesigner?.Actions?.openExcel) {
+      try {
+        // 使用 Designer 的 openExcel action
+        await new Promise<void>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            try {
+              currentDesigner.invoke(GCDesigner.Actions.openExcel, {
+                fileData: reader.result,
+                fileType: 'xlsx'
+              });
+              spreadRef.current = currentSpread;
+              setTimeout(() => {
+                bindSheetEvents();
+                resolve();
+              }, 300);
+            } catch (err) {
+              reject(err);
+            }
+          };
+          reader.onerror = () => reject(new Error('读取文件失败'));
+          reader.readAsArrayBuffer(file);
+        });
+        return;
+      } catch (err) {
+        console.warn('Designer openExcel 失败，回退到 excelIO 方式:', err);
+        // 继续尝试 excelIO 方式
+      }
+    }
+
+    // 回退：使用 excelIO.open + fromJSON 方式
+    // 参考 SpreadJS 官方示例：excelIO.open 的回调返回 workbook 对象，需要调用 toJSON()
     const excelIO = new (ExcelIO as any).IO();
 
     await new Promise<void>((resolve, reject) => {
-      // 关键：设置 fullTrustOnLoad: true 以正确加载 charts 等复杂对象
-      excelIO.open(file, (json: any) => {
-        componentsRef.current.forEach(comp => {
-          removeShape(comp.id);
-        });
-        shapesRef.current.clear();
-        componentMapRef.current.clear();
-        createdShapesRef.current.clear();
-        suppressShapeChangedRef.current.clear();
-        lastSelectionRef.current = null;
+      excelIO.open(file, async (result: any) => {
+        try {
+          // excelIO.open 回调返回的可能是 workbook 对象或直接的 JSON
+          // 参考 spreadjs_skill.json 示例：spread.fromJSON(workbook.toJSON())
+          const jsonData = typeof result?.toJSON === 'function' ? result.toJSON() : result;
 
-        // 使用 ignoreStyle: false 确保样式也被加载
-        currentSpread.fromJSON(json, { ignoreStyle: false });
-        spreadRef.current = currentSpread;
+          // 加载 Excel 数据（包括 charts）
+          // fromJSON 返回 Promise，需要等待加载完成
+          await currentSpread.fromJSON(jsonData);
+          spreadRef.current = currentSpread;
 
-        setTimeout(() => {
-          bindSheetEvents();
-          resolve();
-        }, 100);
+          // 延迟绑定事件，确保所有内容已渲染
+          setTimeout(() => {
+            bindSheetEvents();
+            resolve();
+          }, 200);
+        } catch (err) {
+          reject(err);
+        }
       }, (error: any) => {
         reject(new Error(error?.errorMessage || '加载 Excel 失败'));
-      }, { fullTrustOnLoad: true });
+      }, { importPictureAsFloatingObject: true });
     });
   }, [bindSheetEvents, removeShape]);
 
