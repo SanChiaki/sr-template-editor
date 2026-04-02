@@ -39,6 +39,8 @@ root.innerHTML = `
       <section class="host-actions">
         <h2 class="host-section-title">操作</h2>
         <button id="host-load-button" class="host-button host-button-primary" disabled>加载示例模板</button>
+        <input type="file" id="host-upload-input" accept=".xlsx,.xls" style="display: none;" />
+        <button id="host-upload-button" class="host-button host-button-secondary" disabled>上传本地 Excel</button>
         <button id="host-export-button" class="host-button host-button-secondary" disabled>导出当前模板</button>
       </section>
 
@@ -82,6 +84,8 @@ const frame = document.getElementById('host-editor-frame') as HTMLIFrameElement;
 const statusPill = document.getElementById('host-status-pill') as HTMLSpanElement;
 const requestIdNode = document.getElementById('host-request-id') as HTMLElement;
 const loadButton = document.getElementById('host-load-button') as HTMLButtonElement;
+const uploadButton = document.getElementById('host-upload-button') as HTMLButtonElement;
+const uploadInput = document.getElementById('host-upload-input') as HTMLInputElement;
 const exportButton = document.getElementById('host-export-button') as HTMLButtonElement;
 const componentCountNode = document.getElementById('host-component-count') as HTMLElement;
 const excelSizeNode = document.getElementById('host-excel-size') as HTMLElement;
@@ -132,6 +136,7 @@ const appendLog = (message: string) => {
 
 const updateButtons = () => {
   loadButton.disabled = !isEditorReady;
+  uploadButton.disabled = !isEditorReady;
   exportButton.disabled = !isEditorReady;
 };
 
@@ -261,11 +266,50 @@ const exportCurrentTemplate = () => {
   });
 };
 
+const loadLocalExcel = async (file: File) => {
+  const requestId = createRequestId('load');
+  setLastRequest(requestId);
+  setStatus('正在发送 load 请求', 'ready');
+  appendLog(`发送 load 请求 ${requestId}，文件: ${file.name}`);
+
+  postToEditor({
+    type: SMART_REPORT_IFRAME_MESSAGE_TYPES.load,
+    requestId,
+    payload: {
+      excelFile: file,
+      components: {
+        template_id: 'local-upload',
+        version: '1.0.0',
+        component_list: [],
+      },
+    },
+  });
+};
+
 loadButton.addEventListener('click', () => {
   void loadSampleTemplate().catch((error) => {
     setStatus('load 请求失败', 'error');
     appendLog(`load 请求异常: ${error instanceof Error ? error.message : '未知错误'}`);
   });
+});
+
+uploadButton.addEventListener('click', () => {
+  uploadInput.click();
+});
+
+uploadInput.addEventListener('change', (e) => {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) {
+    return;
+  }
+
+  void loadLocalExcel(file).catch((error) => {
+    setStatus('上传 load 请求失败', 'error');
+    appendLog(`上传 load 请求异常: ${error instanceof Error ? error.message : '未知错误'}`);
+  });
+
+  // Reset input so same file can be selected again
+  uploadInput.value = '';
 });
 
 exportButton.addEventListener('click', () => {
